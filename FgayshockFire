@@ -1,0 +1,540 @@
+--// Dừng script cũ nếu đang chạy
+for _, v in pairs(workspace:GetChildren()) do
+	if v.Name == "HungryEntity_Instance" or v.Name == "HungryEntity_Instance_2" then
+		v:Destroy()
+	end
+end
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Lighting = game:GetService("Lighting")
+local Debris = game:GetService("Debris")
+local ContentProvider = game:GetService("ContentProvider")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local root = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:WaitForChild("Humanoid")
+local camera = workspace.CurrentCamera
+
+-- HÀM PHÁT ÂM THANH ĐỚP TỰ TẠO NGAY LÚC ĐỚP (KHÔNG BỊ DEBRIS XÓA SỚM)
+local function playMaxBiteSound()
+	local sound = Instance.new("Sound")
+	sound.SoundId = "rbxassetid://109823585841978"
+	sound.PlaybackSpeed = 0.85
+	sound.Volume = 8
+	sound.Parent = camera
+	
+	sound:Play()
+	Debris:AddItem(sound, 3)
+end
+
+-- PRELOAD TRƯỚC ÂM THANH
+task.spawn(function()
+	local dummySound = Instance.new("Sound")
+	dummySound.SoundId = "rbxassetid://109823585841978"
+	pcall(function()
+		ContentProvider:PreloadAsync({dummySound})
+	end)
+	dummySound:Destroy()
+end)
+
+-- HÀM MOVE C FRAME CỰC MƯỢT CHO NHÂN VẬT
+local function smoothMoveTo(part, targetCF, duration)
+	local startCF = part.CFrame
+	local elapsed = 0
+	while elapsed < duration do
+		local dt = RunService.RenderStepped:Wait()
+		elapsed = elapsed + dt
+		local alpha = math.clamp(elapsed / duration, 0, 1)
+		local smoothAlpha = alpha * alpha * (3 - 2 * alpha)
+		part.CFrame = startCF:Lerp(targetCF, smoothAlpha)
+	end
+	part.CFrame = targetCF
+end
+
+-- RUNG CAMERA CHẬM DẦN VÀ TẮT MƯỢT MÀ
+local function triggerSmoothCameraShake(duration, intensity)
+	task.spawn(function()
+		local startTime = tick()
+		local conn
+		conn = RunService.RenderStepped:Connect(function()
+			local elapsed = tick() - startTime
+			if elapsed >= duration then
+				humanoid.CameraOffset = Vector3.new(0, 0, 0)
+				conn:Disconnect()
+				return
+			end
+			local progress = elapsed / duration
+			local decay = (1 - progress) * (1 - progress)
+
+			local rotX = math.rad((math.random() - 0.5) * intensity * decay * 8)
+			local rotY = math.rad((math.random() - 0.5) * intensity * decay * 8)
+			local rotZ = math.rad((math.random() - 0.5) * intensity * decay * 8)
+
+			camera.CFrame = camera.CFrame * CFrame.Angles(rotX, rotY, rotZ)
+			
+			local offsetX = (math.random() - 0.5) * intensity * decay * 0.3
+			local offsetY = (math.random() - 0.5) * intensity * decay * 0.3
+			humanoid.CameraOffset = Vector3.new(offsetX, offsetY, 0)
+		end)
+	end)
+end
+
+-- HIỆU ỨNG ĐỚP: TỐI HƠN, RUNG CHẬM DẦN VÀ TAN MẶT MƯỢT MÀ
+local function triggerBiteScreenEffect()
+	triggerSmoothCameraShake(1.8, 4.2)
+
+	local origFOV = camera.FieldOfView
+	camera.FieldOfView = math.max(15, origFOV - 35)
+	TweenService:Create(camera, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {FieldOfView = origFOV}):Play()
+
+	local colorCC = Instance.new("ColorCorrectionEffect")
+	colorCC.Name = "BiteEffect_CC"
+	colorCC.TintColor = Color3.fromRGB(15, 110, 30)
+	colorCC.Brightness = -0.45
+	colorCC.Contrast = 1.8
+	colorCC.Saturation = 3.0
+	colorCC.Parent = Lighting
+
+	local biteBlur = Instance.new("BlurEffect")
+	biteBlur.Size = 35
+	biteBlur.Parent = Lighting
+
+	TweenService:Create(biteBlur, TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Size = 0}):Play()
+	Debris:AddItem(biteBlur, 1.8)
+
+	local fadeTween = TweenService:Create(
+		colorCC,
+		TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+		{
+			TintColor = Color3.fromRGB(255, 255, 255),
+			Brightness = 0,
+			Contrast = 0,
+			Saturation = 0
+		}
+	)
+	fadeTween:Play()
+	fadeTween.Completed:Connect(function()
+		colorCC:Destroy()
+	end)
+end
+
+-- HÀM XỬ LÝ ÂM THANH 3D CHO ENTITY
+local function setup3DSound(sound, forcedVolume)
+	if sound and sound:IsA("Sound") then
+		sound.Volume = forcedVolume or 2
+		sound.RollOffMinDistance = 5
+		sound.RollOffMaxDistance = 1000
+		sound.RollOffMode = Enum.RollOffMode.Linear
+	end
+	return sound
+end
+
+local function setModelCFrame(model, primary, cf)
+	primary.CFrame = cf
+	model:PivotTo(cf)
+end
+
+-- HIỆU ỨNG MẮT NHÒE KÈM FOV
+local function triggerJumpscareVisual()
+	local origFOV = camera.FieldOfView
+
+	local blur = Instance.new("BlurEffect")
+	blur.Size = 22
+	blur.Parent = Lighting
+
+	local blurTween = TweenService:Create(blur, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = 0})
+	blurTween:Play()
+	blurTween.Completed:Connect(function()
+		blur:Destroy()
+	end)
+
+	triggerSmoothCameraShake(0.3, 1.0)
+
+	local zoomIn = TweenService:Create(camera, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {FieldOfView = math.max(30, origFOV - 20)})
+	local zoomOut = TweenService:Create(camera, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {FieldOfView = origFOV})
+
+	zoomIn:Play()
+	zoomIn.Completed:Wait()
+	zoomOut:Play()
+	zoomOut.Completed:Wait()
+	camera.FieldOfView = origFOV
+end
+
+local SpawnSecondEntity
+
+--// LOGIC HOẠT ĐỘNG CHUNG
+local function SetupEntityLogic(entity, primary, ambience, prepare, isSecondEntity, attackDelay)
+	local state = "alive"
+	local attackedPlayer = false
+
+	local function IsLookingAtEntity()
+		if not entity or not entity.Parent or not primary then return false end
+		local _, onScreen = camera:WorldToViewportPoint(primary.Position)
+		if not onScreen then return false end
+		local camPos = camera.CFrame.Position
+		local lookDir = camera.CFrame.LookVector
+		local dir = (primary.Position - camPos).Unit
+		return lookDir:Dot(dir) > 0.5
+	end
+
+	local function DespawnEntity()
+		if state == "dead" then return end
+		state = "dead"
+
+		ambience:Stop()
+		prepare:Stop()
+
+		local baseCF = primary.CFrame
+
+		-- Nhảy lên nhẹ và rơi xuống từ từ
+		local jumpUp = TweenService:Create(primary, TweenInfo.new(0.35, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { CFrame = baseCF * CFrame.new(0, 3, 0) })
+		jumpUp:Play()
+		jumpUp.Completed:Wait()
+
+		task.wait(0.1)
+
+		local fallDown = TweenService:Create(primary, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = baseCF * CFrame.new(0, -25, 0) })
+		fallDown:Play()
+		fallDown.Completed:Wait()
+
+		if entity and entity.Parent then
+			entity:Destroy()
+		end
+
+		if not isSecondEntity and not attackedPlayer and SpawnSecondEntity then
+			task.spawn(SpawnSecondEntity)
+		end
+	end
+
+	local function dealDamage(amount)
+		local damageRemote = ReplicatedStorage:FindFirstChild("LocalDamage", true) or ReplicatedStorage:FindFirstChild("ChangeHealth", true)
+		if damageRemote and damageRemote:IsA("RemoteEvent") then
+			damageRemote:FireServer(amount, "SittingItOut", 1, nil)
+			damageRemote:FireServer("Damage", amount)
+		end
+	end
+
+	local function playElectricHitEffect()
+		local sound = Instance.new("Sound")
+		sound.SoundId = "rbxassetid://126172750038425"
+		sound.Volume = 3
+		sound.Parent = root
+		sound:Play()
+		Debris:AddItem(sound, 3)
+		triggerSmoothCameraShake(0.15, 0.8)
+	end
+
+	-- CƠ CHẾ TẤN CÔNG
+	local function Attack()
+		if state ~= "alive" then return end
+		state = "attacking"
+		attackedPlayer = true
+
+		for _, v in pairs(entity:GetDescendants()) do
+			if v:IsA("BasePart") then
+				v.CanCollide = false
+			end
+		end
+
+		prepare:Play()
+
+		local beamDmg = isSecondEntity and 10 or 5
+		local biteDmg = 15
+
+		if humanoid then
+			humanoid.WalkSpeed = 0
+			humanoid.AutoRotate = false
+		end
+
+		root.Anchored = true
+
+		local playerAtt = Instance.new("Attachment")
+		playerAtt.Parent = root
+
+		local beams = {}
+		local atts = {}
+		local widthValues = {}
+
+		local function createSmoothBeam(offsetCFrame)
+			local att = Instance.new("Attachment")
+			att.CFrame = offsetCFrame
+			att.Parent = primary
+			table.insert(atts, att)
+
+			local beam = Instance.new("Beam")
+			beam.Attachment0 = att
+			beam.Attachment1 = playerAtt
+			beam.Texture = "rbxassetid://18722421816"
+			beam.TextureMode = Enum.TextureMode.Wrap
+			beam.TextureLength = 4
+			beam.TextureSpeed = 30
+			beam.LightEmission = 1
+			beam.Color = ColorSequence.new(Color3.fromRGB(100, 255, 100))
+			beam.Width0 = 0
+			beam.Width1 = 0
+			beam.FaceCamera = true
+			beam.Parent = primary
+			table.insert(beams, beam)
+
+			local widthVal = Instance.new("NumberValue")
+			widthVal.Value = 0
+			widthVal.Parent = beam
+			widthVal.Changed:Connect(function(v)
+				if beam and beam.Parent then
+					beam.Width0 = v
+					beam.Width1 = v
+				end
+			end)
+			table.insert(widthValues, widthVal)
+
+			TweenService:Create(widthVal, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Value = 1.2}):Play()
+		end
+
+		-- BẮN TIA ĐIỆN 1 & 2
+		createSmoothBeam(CFrame.new(-4.5, 0, 0))
+		dealDamage(beamDmg)
+		playElectricHitEffect()
+
+		task.wait(0.4)
+		createSmoothBeam(CFrame.new(4.5, 0, 0))
+		dealDamage(beamDmg)
+		playElectricHitEffect()
+
+		task.wait(0.4)
+
+		-- 1. ĐẨY LÙI XA 8 STUDS
+		local entityPos = primary.Position
+		local playerPos = root.Position
+		local awayDir = (playerPos - entityPos).Unit
+		local pushedCF = CFrame.new(playerPos + awayDir * 8, entityPos)
+
+		smoothMoveTo(root, pushedCF, 0.4)
+		task.wait(0.05)
+
+		-- 2. KÉO LẠI CÁCH MỒM 2 STUDS
+		local mouthCF = primary.CFrame * CFrame.new(0, 1.5, -2)
+		smoothMoveTo(root, mouthCF, 0.8)
+
+		-- PHÁT ÂM THANH ĐỚP TỰ TẠO VÀ HIỆU ỨNG
+		playMaxBiteSound()
+		triggerBiteScreenEffect()
+		task.spawn(function()
+			dealDamage(biteDmg)
+		end)
+
+		root.Anchored = false
+
+		-- ANIMATION TÉ
+		local fallAnimTrack
+		if humanoid then
+			local anim = Instance.new("Animation")
+			anim.AnimationId = "rbxassetid://13842248811"
+			local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
+			fallAnimTrack = animator:LoadAnimation(anim)
+			fallAnimTrack.Priority = Enum.AnimationPriority.Action
+			fallAnimTrack:Play()
+		end
+
+		-- VĂNG NGỬA RA SAU
+		task.spawn(function()
+			local backwardDirection = -root.CFrame.LookVector
+			local knockTarget = root.CFrame + (backwardDirection * 12) + Vector3.new(0, 0.5, 0)
+			smoothMoveTo(root, knockTarget, 0.3)
+		end)
+
+		-- RÚT TIA ĐIỆN TỪ TỪ TRONG 1 GIÂY
+		for _, wv in ipairs(widthValues) do
+			TweenService:Create(wv, TweenInfo.new(1.0, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Value = 0}):Play()
+		end
+
+		-- ĐỢI ĐÚNG 1 GIÂY (THỰC THỂ Ở LẠI VÀ TIA ĐIỆN THU HẸP DẦN)
+		task.wait(1.0)
+
+		-- DỌN DẸP BEAM
+		for _, beam in ipairs(beams) do beam:Destroy() end
+		for _, att in ipairs(atts) do att:Destroy() end
+		if playerAtt then playerAtt:Destroy() end
+
+		-- THỰC THỂ NHẢY VÀ RƠI XUỐNG TỪ TỪ
+		DespawnEntity()
+
+		task.wait(0.4)
+
+		if fallAnimTrack then
+			fallAnimTrack:Stop(0.3)
+		end
+
+		if humanoid then
+			humanoid.AutoRotate = true
+			humanoid.WalkSpeed = 16
+		end
+	end
+
+	ambience:Play()
+
+	task.spawn(function()
+		local lookAwayTime = 0
+		while state == "alive" and entity and entity.Parent do
+			local dt = RunService.RenderStepped:Wait()
+			if not IsLookingAtEntity() then
+				lookAwayTime = lookAwayTime + dt
+				if lookAwayTime >= 0.4 then
+					DespawnEntity()
+					break
+				end
+			else
+				lookAwayTime = 0
+			end
+		end
+	end)
+
+	task.delay(attackDelay or 2.5, function()
+		if state ~= "alive" then return end
+		if IsLookingAtEntity() then
+			Attack()
+		else
+			DespawnEntity()
+		end
+	end)
+end
+
+--// CON THỨ HAI
+SpawnSecondEntity = function()
+	task.wait(0.5)
+
+	local s2, r2 = pcall(function()
+		return game:GetObjects("rbxassetid://84574590415898")[1]
+	end)
+	if not s2 or not r2 then return end
+
+	local entity2 = r2
+	entity2.Name = "HungryEntity_Instance_2"
+	entity2.Parent = workspace
+
+	local primary2 = entity2.PrimaryPart or entity2:FindFirstChildWhichIsA("BasePart", true)
+	if not primary2 then entity2:Destroy() return end
+	entity2.PrimaryPart = primary2
+
+	for _, v in pairs(entity2:GetDescendants()) do
+		if v:IsA("BasePart") then
+			if v ~= primary2 then
+				v.Anchored = false
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = primary2
+				weld.Part1 = v
+				weld.Parent = v
+			end
+		end
+	end
+	primary2.Anchored = true
+
+	local ooga2 = entity2:FindFirstChild("OOGA BOOGAAAA", true)
+
+	for _, obj in pairs(entity2:GetDescendants()) do
+		if obj:IsA("Sound") then setup3DSound(obj, 2) end
+	end
+
+	local scream2 = (ooga2 and ooga2:FindFirstChild("HORROR SCREAM 15", true)) or entity2:FindFirstChild("HORROR SCREAM 15", true)
+	if scream2 and scream2:IsA("Sound") then
+		setup3DSound(scream2, 5)
+		scream2.PlaybackSpeed = 1.25
+	end
+
+	local ambience2 = Instance.new("Sound", primary2)
+	ambience2.SoundId = "rbxassetid://136992416500756"
+	ambience2.PlaybackSpeed = 1.1
+	ambience2.Looped = true
+	setup3DSound(ambience2, 2.5)
+
+	local prepare2 = Instance.new("Sound", primary2)
+	prepare2.SoundId = "rbxassetid://6351509719"
+	prepare2.PlaybackSpeed = 1.4
+	prepare2.Looped = true
+	setup3DSound(prepare2, 4)
+
+	local targetCF2 = root.CFrame * CFrame.new(0, 0, -8)
+	local startCF2 = targetCF2 * CFrame.new(0, -6, 0)
+	local peakCF2 = targetCF2 * CFrame.new(0, 3, 0)
+
+	setModelCFrame(entity2, primary2, startCF2)
+	if scream2 then scream2:Play() end
+
+	task.spawn(triggerJumpscareVisual)
+
+	local jumpUp = TweenService:Create(primary2, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = peakCF2 })
+	jumpUp:Play()
+	jumpUp.Completed:Wait()
+
+	local landDown = TweenService:Create(primary2, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = targetCF2 })
+	landDown:Play()
+	landDown.Completed:Wait()
+
+	SetupEntityLogic(entity2, primary2, ambience2, prepare2, true, 1.1)
+end
+
+--// CON THỨ NHẤT
+local success, result = pcall(function()
+	return game:GetObjects("rbxassetid://84574590415898")[1]
+end)
+
+if not success or not result then
+	warn("Không thể tải Entity từ AssetID!")
+	return
+end
+
+local entity = result
+entity.Name = "HungryEntity_Instance"
+entity.Parent = workspace
+
+local primary = entity.PrimaryPart or entity:FindFirstChildWhichIsA("BasePart", true)
+if not primary then entity:Destroy() return end
+entity.PrimaryPart = primary
+
+for _, v in pairs(entity:GetDescendants()) do
+	if v:IsA("BasePart") then
+		if v ~= primary then
+			v.Anchored = false
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = primary
+			weld.Part1 = v
+			weld.Parent = v
+		end
+	end
+end
+primary.Anchored = true
+
+for _, obj in pairs(entity:GetDescendants()) do
+	if obj:IsA("Sound") then setup3DSound(obj, 2) end
+end
+
+local ambience = Instance.new("Sound", primary)
+ambience.SoundId = "rbxassetid://136992416500756"
+ambience.PlaybackSpeed = 1
+ambience.Looped = true
+setup3DSound(ambience, 2)
+
+local prepare = Instance.new("Sound", primary)
+prepare.SoundId = "rbxassetid://6351509719"
+prepare.PlaybackSpeed = 1.2
+prepare.Looped = true
+setup3DSound(prepare, 4)
+
+local targetCFrame = root.CFrame * CFrame.new(0, 0, -8)
+local startCFrame = targetCFrame * CFrame.new(0, -6, 0)
+local peakCFrame = targetCFrame * CFrame.new(0, 2.5, 0)
+
+setModelCFrame(entity, primary, startCFrame)
+
+local jumpUp1 = TweenService:Create(primary, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = peakCFrame })
+jumpUp1:Play()
+jumpUp1.Completed:Wait()
+
+local land1 = TweenService:Create(primary, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = targetCFrame })
+land1:Play()
+land1.Completed:Wait()
+
+SetupEntityLogic(entity, primary, ambience, prepare, false, 2.5)

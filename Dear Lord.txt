@@ -1,0 +1,1105 @@
+-- =====================================================================
+-- CUSTOM ENTITY: DEER GOD (FULL SCRIPT - SEPARATE ROLLOFF SOUND & MUSIC)
+-- Asset ID Entity: rbxassetid://108107258450865
+-- =====================================================================
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = workspace
+
+local Gameplay = Workspace:WaitForChild("GameplayFolder")
+local Rooms = Gameplay:WaitForChild("Rooms")
+
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+-- =====================================================================
+-- MODULE CHECK HIDING
+-- =====================================================================
+local CheckHiding = {}
+
+function CheckHiding.isPlayerHiding()
+    local char = Player.Character
+    if not char then return false end
+    
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    
+    if char:FindFirstChild("InLocker") or char:GetAttribute("Hiding") or char:GetAttribute("Hidden") then
+        return true
+    end
+    if Player:FindFirstChild("InLocker") then
+        return true
+    end
+    if hum and hum.WalkSpeed == 0 and hrp and hrp.Anchored then
+        return true
+    end
+    
+    local parent = char.Parent
+    while parent and parent ~= workspace do
+        if parent:IsA("Model") then
+            local name = parent.Name:lower()
+            if name:find("locker") or name:find("closet") or name:find("wardrobe") or name:find("stall") or name:find("cabinet") then
+                return true
+            end
+        end
+        parent = parent.Parent
+    end
+    
+    return false
+end
+
+-- =====================================================================
+-- CẤU HÌNH THỰC THỂ (DEER GOD)
+-- =====================================================================
+local EntityConfig = {
+    AssetId = "rbxassetid://108107258450865",
+    EntityName = "Deer god",
+    
+    -- MODEL VÀ HIỆU ỨNG
+    PearlAssetId = "rbxassetid://80969454719306",    -- Model Viên Ngọc
+    PortalAssetId = "rbxassetid://109220275031818",  -- Model Cổng Không Gian
+    ExplosionAssetId = "rbxassetid://90513035459514",-- Model Nổ khi dịch chuyển
+    StaticAssetId = "rbxassetid://81278874204337",   -- Asset Static Màn hình
+    
+    -- TỐC ĐỘ DI CHUYỂN & PHẠM VI (ĐÃ CẬP NHẬT)
+    NormalSpeed = 872,       -- Tốc độ không đuổi theo Node: 872
+    BaseChaseSpeed = 16.5,     -- Tốc độ khi đuổi: 17
+    HidingChaseSpeed = 3.5,  -- Tốc độ khi Player trốn tủ
+    KeycardChaseSpeed = 3.5, -- Tốc độ khi gần KeyCard/Paper
+    DetectionRange = 210,    -- Phạm vi phát hiện đuổi theo (210 Studs)
+    ItemCheckRange = 200,    -- Phạm vi quét KeyCard quanh Player (200 Studs)
+    KillRange = 6.5,         -- Tầm diệt (Studs)
+    DamageAmount = 100,
+    
+    -- CẤU HÌNH ÂM THANH BƯỚC CHÂN (RIÊNG: 50 - 120)
+    SoundLink = "https://github.com/Cyrene611/Multi-Monster-/raw/refs/heads/main/Deer_god_footsteps.mp3.mpeg_1_1_1.mp3",
+    SoundFileName = "DeerGodFootsteps",
+    SoundVolume = 1.5,
+    SoundRollOffMinDistance = 20,  -- Min 50
+    SoundRollOffMaxDistance = 120, -- Max 120
+    
+    -- CẤU HÌNH NHẠC ĐUỔI THEO (RIÊNG: 140 - 300)
+    ChaseSoundLink = "https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/DEER%20LORD.mp3",
+    ChaseSoundFileName = "DeerLordChaseMusic",
+    ChaseSoundVolume = 2,
+    ChaseRollOffMinDistance = 120, -- Min 140
+    ChaseRollOffMaxDistance = 333, -- Max 300
+    
+    -- CẤU HÌNH ÂM THANH TRỐN THOÁT
+    EscapeSoundLink = "https://github.com/Cyrene611/Multi-Monster-/raw/refs/heads/main/Deergod_escape_full.mp3.mpeg.mp3",
+    EscapeSoundFileName = "DeerGodEscape",
+    EscapeSoundVolume = 3.2,
+    
+    -- CẤU HÌNH KỸ NĂNG DỊCH CHUYỂN NGỌC
+    FirstTeleportDelay = 7,       -- Lần đầu tiên: 7 giây
+    ShortTeleportDelay = 4,       -- Cooldown ngắn: 4 giây
+    LongTeleportDelay = 8,        -- Cooldown dài: 8 giây
+    TeleportTargetDistance = 35,  -- Spawn ngọc trước mặt Player 30 studs
+    BounceHeight = 5.0,           -- Quăng lên cao 5 studs
+    BounceUpTime = 0.5,           -- Thời gian bay lên (0.5 giây)
+    BounceDownTime = 0.5,         -- Thời gian rơi xuống (0.5 giây)
+    PortalTeleportDelay = 1.65,   -- Delay 1.65s từ khi cổng/nổ xuất hiện
+    PortalYOffset = Vector3.new(0, 2, 0),
+    
+    -- ÂM THANH DỊCH CHUYỂN
+    TeleportSoundId1 = "rbxassetid://131075908721205",
+    TeleportSoundId2 = "rbxassetid://134093895676420",
+    TeleportSoundVolume = 5.0,
+    PearlLandSoundId = "rbxassetid://86985171474814",
+    
+    -- CẤU HÌNH RUNG MÀN HÌNH NỀN
+    MaxShakeRadius = 300,
+    MaxMagnitude = 2.2,
+    Tolerance = 2.0
+}
+
+-- CẤU HÌNH SPAM TỦ / NGĂN KÉO
+local SpamConfig = {
+    ItemLocker = { MinWait = 0.1, MaxWait = 0.3 },
+    Drawer     = { MinWait = 0.5, MaxWait = 0.8 },
+    LockerBase = { MinWait = 0.5, MaxWait = 0.8 }
+}
+
+local entityModel = nil
+local rootPart = nil
+local entitySound = nil
+local entityChaseSound = nil
+local teleportSoundInst1 = nil
+local teleportSoundInst2 = nil
+local entityFinished = false
+local activeShaker = nil
+local continuousShakeInst = nil
+local isCurrentlyChasing = false
+local isTeleporting = false
+local roomConnection = nil
+local staticGui = nil
+local staticImage = nil
+
+-- Danh sách tên Item kiểm tra giảm tốc độ
+local targetItemNames = {
+    ["ridgekeycard"] = true,
+    ["passwordpaper"] = true,
+    ["normalkeycard"] = true,
+    ["innerkeycard"] = true
+}
+
+-- =====================================================================
+-- HÀM SPAM TỦ & NGĂN KÉO KHI SANG PHÒNG MỚI (CHẠY TRONG 10S)
+-- =====================================================================
+local function triggerGhostSpamBypass()
+    local roomsFolder = Gameplay:FindFirstChild("Rooms")
+    if not roomsFolder then return end
+
+    local validInteractions = {}
+    for _, v6 in pairs(roomsFolder:GetChildren()) do
+        for _, v7 in pairs(v6:GetChildren()) do
+            if v7:IsA("Model") and (v7:GetAttribute("InteractionType") == "DrawerBase" or v7:GetAttribute("InteractionType") == "LockerBase" or v7:GetAttribute("InteractionType") == "ItemLocker") then
+                table.insert(validInteractions, v7)
+            end
+        end
+        if v6:FindFirstChild("Interactables") then
+            for _, v8 in pairs(v6.Interactables:GetChildren()) do
+                if v8:IsA("Model") and (v8:GetAttribute("InteractionType") == "DrawerBase" or v8:GetAttribute("InteractionType") == "LockerBase" or v8:GetAttribute("InteractionType") == "ItemLocker") then
+                    table.insert(validInteractions, v8)
+                end
+            end
+        end
+    end
+
+    if #validInteractions == 0 then return end
+
+    for _, v_u_9 in pairs(validInteractions) do
+        local interactionType = v_u_9:GetAttribute("InteractionType")
+        
+        if interactionType == "ItemLocker" and v_u_9:FindFirstChild("Closed") then
+            task.spawn(function()
+                local cfg = SpamConfig.ItemLocker
+                local endTime = os.clock() + 10
+                while os.clock() < endTime and not entityFinished do
+                    task.wait(math.random(cfg.MinWait * 10, cfg.MaxWait * 10) * 0.1)
+                    if v_u_9:FindFirstChild("Closed") then
+                        v_u_9.Closed.Value = not v_u_9.Closed.Value
+                    end
+                end
+            end)
+        elseif interactionType == "DrawerBase" and v_u_9:FindFirstChild("Drawers") then
+            for _, v_u_12 in pairs(v_u_9.Drawers:GetChildren()) do
+                if v_u_12:FindFirstChild("Drawer") and v_u_12.Drawer:FindFirstChild("OpenValue") then
+                    task.spawn(function()
+                        local cfg = SpamConfig.Drawer
+                        local endTime = os.clock() + 10
+                        while os.clock() < endTime and not entityFinished do
+                            task.wait(math.random(cfg.MinWait * 10, cfg.MaxWait * 10) * 0.1)
+                            if v_u_12:FindFirstChild("Drawer") and v_u_12.Drawer:FindFirstChild("OpenValue") then
+                                v_u_12.Drawer.OpenValue.Value = not v_u_12.Drawer.OpenValue.Value
+                            end
+                        end
+                    end)
+                end
+            end
+        elseif interactionType == "LockerBase" and v_u_9:FindFirstChild("Folder") and v_u_9.Folder:FindFirstChild("OpenValue") then
+            task.spawn(function()
+                local cfg = SpamConfig.LockerBase
+                local endTime = os.clock() + 10
+                local v13 = 0
+                while os.clock() < endTime and not entityFinished do
+                    if v_u_9.Folder:FindFirstChild("PlayerIn") and v_u_9.Folder.PlayerIn.Value then return end
+                    task.wait(math.random(cfg.MinWait * 10, cfg.MaxWait * 10) * 0.1)
+                    if v_u_9.Folder:FindFirstChild("OpenValue") then
+                        if v13 % 2 == 0 then
+                            v_u_9.Folder.OpenValue.Value = "enter"
+                        else
+                            v_u_9.Folder.OpenValue.Value = "exit"
+                        end
+                    end
+                    v13 = v13 + 1
+                end
+            end)
+        end
+    end
+end
+
+-- =====================================================================
+-- HÀM CÙNG ĐỘ CAO (KHỎI BÁM SÀN)
+-- =====================================================================
+local function getTargetY(referenceY)
+    return referenceY
+end
+
+-- =====================================================================
+-- HÀM TẠO GUI STATIC MÀN HÌNH
+-- =====================================================================
+local function setupStaticGui()
+    staticGui = Instance.new("ScreenGui")
+    staticGui.Name = "DeerGodStaticGui"
+    staticGui.ResetOnSpawn = false
+    staticGui.IgnoreGuiInset = true
+    staticGui.Parent = PlayerGui
+
+    staticImage = Instance.new("ImageLabel")
+    staticImage.Name = "StaticEffect"
+    staticImage.Size = UDim2.new(1.1, 0, 1.1, 0)
+    staticImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+    staticImage.AnchorPoint = Vector2.new(0.5, 0.5)
+    staticImage.BackgroundTransparency = 1
+    staticImage.ImageTransparency = 1
+    staticImage.Image = EntityConfig.StaticAssetId
+    staticImage.Parent = staticGui
+
+    task.spawn(function()
+        while not entityFinished do
+            if isCurrentlyChasing and staticImage and not entityFinished then
+                staticImage.ImageTransparency = 0.97
+                local flipX = (math.random(0, 1) == 1) and 1.1 or -1.1
+                local flipY = (math.random(0, 1) == 1) and 1.1 or -1.1
+                local offX = math.random(-25, 25) / 1000
+                local offY = math.random(-25, 25) / 1000
+                staticImage.Size = UDim2.new(flipX, 0, flipY, 0)
+                staticImage.Position = UDim2.new(0.5 + offX, 0, 0.5 + offY, 0)
+                staticImage.Rotation = (math.random(0, 1) == 1) and 0 or 180
+            else
+                if staticImage then
+                    staticImage.ImageTransparency = 1
+                end
+            end
+            task.wait(0.05)
+        end
+    end)
+end
+
+-- =====================================================================
+-- HỆ THỐNG XỬ LÝ NHẤP NHÁY MESH "SmallNeon" (MÀU 102, 0, 255)
+-- =====================================================================
+local function startSmallNeonEffectLoop()
+    task.spawn(function()
+        local neonColor = Color3.fromRGB(102, 0, 255)
+        local originalData = {}
+        local activeTrackedParts = {}
+        local smallNeonList = {}
+        local lastScanTime = 0
+
+        while not entityFinished do
+            task.wait(0.04)
+            if entityFinished then break end
+
+            local char = Player.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+            if hrp then
+                local playerPos = hrp.Position
+                local now = os.clock()
+
+                if now - lastScanTime > 2 then
+                    lastScanTime = now
+                    table.clear(smallNeonList)
+                    for _, obj in ipairs(Rooms:GetDescendants()) do
+                        if obj.Name == "SmallNeon" and obj:IsA("BasePart") then
+                            table.insert(smallNeonList, obj)
+                        end
+                    end
+                end
+
+                local currentFrameParts = {}
+                for i = 1, #smallNeonList do
+                    local obj = smallNeonList[i]
+                    if obj and obj.Parent then
+                        local dist = (obj.Position - playerPos).Magnitude
+                        if dist <= 45 then
+                            currentFrameParts[obj] = true
+                            if not originalData[obj] then
+                                local lightTable = {}
+                                for _, child in ipairs(obj:GetChildren()) do
+                                    if child:IsA("Light") then
+                                        table.insert(lightTable, {light = child, color = child.Color})
+                                    end
+                                end
+                                originalData[obj] = {
+                                    partColor = obj.Color,
+                                    lights = lightTable
+                                }
+                            end
+
+                            activeTrackedParts[obj] = true
+                            local data = originalData[obj]
+                            local usePurple = (math.random(1, 2) == 1)
+
+                            obj.Color = usePurple and neonColor or data.partColor
+                            for _, lData in ipairs(data.lights) do
+                                if lData.light and lData.light.Parent then
+                                    lData.light.Color = usePurple and neonColor or lData.color
+                                end
+                            end
+                        end
+                    end
+                end
+
+                for part, _ in pairs(activeTrackedParts) do
+                    if not currentFrameParts[part] then
+                        if part and part.Parent and originalData[part] then
+                            local data = originalData[part]
+                            part.Color = data.partColor
+                            for _, lData in ipairs(data.lights) do
+                                if lData.light and lData.light.Parent then
+                                    lData.light.Color = lData.color
+                                end
+                            end
+                        end
+                        activeTrackedParts[part] = nil
+                    end
+                end
+            end
+        end
+
+        for part, data in pairs(originalData) do
+            if part and part.Parent then
+                part.Color = data.partColor
+                for _, lData in ipairs(data.lights) do
+                    if lData.light and lData.light.Parent then
+                        lData.light.Color = lData.color
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- =====================================================================
+-- HÀM KIỂM TRA ITEM QUANH PLAYER
+-- =====================================================================
+local cachedItems = {}
+local lastItemScanTime = 0
+
+local function updateItemCache()
+    table.clear(cachedItems)
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") and targetItemNames[obj.Name:lower()] then
+            local pPart = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+            if pPart then
+                table.insert(cachedItems, pPart)
+            end
+        end
+    end
+end
+
+local function checkNearbyItems(playerPos)
+    local now = os.clock()
+    if now - lastItemScanTime > 1.5 then
+        lastItemScanTime = now
+        updateItemCache()
+    end
+
+    for i = 1, #cachedItems do
+        local pPart = cachedItems[i]
+        if pPart and pPart.Parent then
+            if (pPart.Position - playerPos).Magnitude <= EntityConfig.ItemCheckRange then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- =====================================================================
+-- HÀM LOAD ASSET MODEL CHUNG
+-- =====================================================================
+local function loadModelFromAsset(assetId)
+    local success, objs = pcall(game.GetObjects, game, assetId)
+    if success and objs and #objs > 0 then
+        local obj = objs[1]
+        local model = (obj:IsA("Model") and obj) or Instance.new("Model")
+        
+        if obj:IsA("BasePart") then
+            obj.Parent = model
+        end
+        
+        if not model.PrimaryPart then
+            local part = model:FindFirstChildWhichIsA("BasePart", true)
+            if part then model.PrimaryPart = part end
+        end
+        
+        for _, desc in ipairs(model:GetDescendants()) do
+            if desc:IsA("BasePart") then
+                desc.Anchored = true
+                desc.CanCollide = false
+                desc.CanTouch = false
+                desc.CanQuery = false
+            end
+        end
+        return model
+    end
+    return nil
+end
+
+-- =====================================================================
+-- MODULE CAMERA SHAKER & HIỆU ỨNG RUNG DỊCH CHUYỂN
+-- =====================================================================
+local function initializeBypassedShaker()
+    local playerCamera = workspace.CurrentCamera
+    if not playerCamera then return nil end
+
+    local currentCFrame = playerCamera.CFrame
+    local function cameraCallback(shakeCFrame)
+        playerCamera.CFrame = currentCFrame * shakeCFrame
+    end
+
+    local renderPriority = Enum.RenderPriority.Camera.Value + 1
+    local shakerInstance = {
+        ["_running"] = false,
+        ["_renderName"] = "BypassedCameraShaker_DeerGod",
+        ["_renderPriority"] = renderPriority,
+        ["_camShakeInstances"] = {},
+        ["_callback"] = cameraCallback
+    }
+
+    RunService:BindToRenderStep(shakerInstance._renderName, shakerInstance._renderPriority, function(deltaTime)
+        currentCFrame = playerCamera.CFrame
+        local posAccumulator = Vector3.new()
+        local rotAccumulator = Vector3.new()
+
+        local instances = shakerInstance._camShakeInstances
+        for i = 1, #instances do
+            local inst = instances[i]
+            inst.tick = inst.tick + deltaTime * inst.Roughness
+            local deltaTick = inst.tick
+
+            local noiseVal = Vector3.new(
+                math.noise(deltaTick, 0) * 0.5,
+                math.noise(0, deltaTick) * 0.5,
+                math.noise(deltaTick, deltaTick) * 0.5
+            )
+
+            local shakeVector = noiseVal * inst.Magnitude
+            posAccumulator = posAccumulator + shakeVector * inst.PositionInfluence
+            rotAccumulator = rotAccumulator + shakeVector * inst.RotationInfluence
+        end
+
+        local finalCFrame = CFrame.new(posAccumulator) 
+            * CFrame.Angles(0, math.rad(rotAccumulator.Y), 0) 
+            * CFrame.Angles(math.rad(rotAccumulator.X), 0, math.rad(rotAccumulator.Z))
+
+        shakerInstance._callback(finalCFrame)
+    end)
+
+    shakerInstance._running = true
+    return shakerInstance
+end
+
+local function startSmoothShakeLoop()
+    activeShaker = initializeBypassedShaker()
+    
+    continuousShakeInst = {
+        ["Magnitude"] = 0,
+        ["Roughness"] = 8,
+        ["PositionInfluence"] = Vector3.new(0.3, 0.3, 0.3),
+        ["RotationInfluence"] = Vector3.new(2.0, 2.0, 2.0),
+        ["tick"] = Random.new():NextNumber(-100, 100)
+    }
+    table.insert(activeShaker._camShakeInstances, continuousShakeInst)
+
+    task.spawn(function()
+        local pulseTimer = 0
+        while not entityFinished do
+            local dt = task.wait()
+            if entityFinished or not rootPart or not rootPart.Parent then break end
+
+            local char = Player.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+            if hrp and continuousShakeInst then
+                local dist = (hrp.Position - rootPart.Position).Magnitude
+                if dist <= EntityConfig.MaxShakeRadius then
+                    local distAlpha = 1 - math.clamp(dist / EntityConfig.MaxShakeRadius, 0, 1)
+                    pulseTimer = pulseTimer + dt
+                    local pulseWave = math.max(0, math.sin(pulseTimer * math.pi * 2))
+                    local targetMag = EntityConfig.MaxMagnitude * distAlpha * (0.25 + 0.75 * pulseWave)
+                    
+                    continuousShakeInst.Magnitude = continuousShakeInst.Magnitude + (targetMag - continuousShakeInst.Magnitude) * math.min(dt * 8, 1)
+                else
+                    continuousShakeInst.Magnitude = continuousShakeInst.Magnitude + (0 - continuousShakeInst.Magnitude) * math.min(dt * 8, 1)
+                end
+            end
+        end
+    end)
+end
+
+local function triggerTeleportShake()
+    if not activeShaker then return end
+    
+    local impulseInst = {
+        ["Magnitude"] = 12.0,
+        ["Roughness"] = 12,
+        ["PositionInfluence"] = Vector3.new(0.8, 0.8, 0.8),
+        ["RotationInfluence"] = Vector3.new(4.5, 4.5, 4.5),
+        ["tick"] = Random.new():NextNumber(-100, 100)
+    }
+    table.insert(activeShaker._camShakeInstances, impulseInst)
+
+    task.spawn(function()
+        local duration = 0.7
+        local elapsed = 0
+        while elapsed < duration do
+            local dt = task.wait()
+            elapsed = elapsed + dt
+            local alpha = 1 - (elapsed / duration)
+            impulseInst.Magnitude = 12.0 * (alpha * alpha)
+        end
+
+        for i, inst in ipairs(activeShaker._camShakeInstances) do
+            if inst == impulseInst then
+                table.remove(activeShaker._camShakeInstances, i)
+                break
+            end
+        end
+    end)
+end
+
+-- =====================================================================
+-- HÀM TẢI ÂM THANH GITHUB
+-- =====================================================================
+local function GitAud(soundlink, filename)
+    local FileName = filename .. ".mp3"
+    if type(isfile) == "function" and not isfile(FileName) then
+        if type(writefile) == "function" and type(game.HttpGet) == "function" then
+            writefile(FileName, game:HttpGet(soundlink))
+        end
+    end
+    local getAsset = getcustomasset or getsynasset
+    if getAsset then
+        return getAsset(FileName)
+    end
+    return soundlink
+end
+
+-- =====================================================================
+-- LOAD MODEL DEER GOD & AUDIOS
+-- =====================================================================
+local function loadEntityModel()
+    local model = loadModelFromAsset(EntityConfig.AssetId)
+    if not model then
+        error("[Deer god] Không thể load AssetID thực thể!")
+    end
+
+    model.Name = EntityConfig.EntityName
+    model.Parent = Workspace
+
+    -- ÂM THANH BƯỚC CHÂN (50 - 120)
+    local sound = Instance.new("Sound")
+    sound.Name = "Footsteps"
+    sound.SoundId = GitAud(EntityConfig.SoundLink, EntityConfig.SoundFileName)
+    sound.Volume = EntityConfig.SoundVolume
+    sound.Looped = true
+    sound.RollOffMode = Enum.RollOffMode.Linear
+    sound.RollOffMinDistance = EntityConfig.SoundRollOffMinDistance
+    sound.RollOffMaxDistance = EntityConfig.SoundRollOffMaxDistance
+    sound.Parent = model.PrimaryPart
+    entitySound = sound
+
+    -- NHẠC ĐUỔI THEO (140 - 300)
+    local chaseSound = Instance.new("Sound")
+    chaseSound.Name = "ChaseMusic"
+    chaseSound.SoundId = GitAud(EntityConfig.ChaseSoundLink, EntityConfig.ChaseSoundFileName)
+    chaseSound.Volume = 0
+    chaseSound.Looped = true
+    chaseSound.RollOffMode = Enum.RollOffMode.Linear
+    chaseSound.RollOffMinDistance = EntityConfig.ChaseRollOffMinDistance
+    chaseSound.RollOffMaxDistance = EntityConfig.ChaseRollOffMaxDistance
+    chaseSound.Parent = model.PrimaryPart
+    entityChaseSound = chaseSound
+
+    teleportSoundInst1 = Instance.new("Sound")
+    teleportSoundInst1.Name = "TeleportSound1"
+    teleportSoundInst1.SoundId = EntityConfig.TeleportSoundId1
+    teleportSoundInst1.Volume = EntityConfig.TeleportSoundVolume
+    teleportSoundInst1.Parent = model.PrimaryPart
+
+    teleportSoundInst2 = Instance.new("Sound")
+    teleportSoundInst2.Name = "TeleportSound2"
+    teleportSoundInst2.SoundId = EntityConfig.TeleportSoundId2
+    teleportSoundInst2.Volume = EntityConfig.TeleportSoundVolume
+    teleportSoundInst2.Parent = model.PrimaryPart
+
+    return model
+end
+
+-- =====================================================================
+-- HÀM ÂM THANH CHẠM SÀN
+-- =====================================================================
+local function playLandSound(position)
+    local soundAttachment = Instance.new("Attachment")
+    soundAttachment.WorldPosition = position
+    soundAttachment.Parent = workspace.Terrain
+
+    local landSound = Instance.new("Sound")
+    landSound.Name = "PearlLandSound"
+    landSound.SoundId = EntityConfig.PearlLandSoundId
+    landSound.Volume = 3.0
+    landSound.RollOffMode = Enum.RollOffMode.Linear
+    landSound.RollOffMinDistance = EntityConfig.SoundRollOffMinDistance
+    landSound.RollOffMaxDistance = EntityConfig.SoundRollOffMaxDistance
+    landSound.Parent = soundAttachment
+
+    landSound:Play()
+    task.delay(2, function()
+        if soundAttachment then
+            soundAttachment:Destroy()
+        end
+    end)
+end
+
+-- =====================================================================
+-- HÀM TẠO MODEL NỔ
+-- =====================================================================
+local function triggerExplosionEffect(position)
+    task.spawn(function()
+        local expModel = loadModelFromAsset(EntityConfig.ExplosionAssetId)
+        if not expModel then return end
+
+        expModel.Name = "TeleportExplosion"
+        expModel.Parent = Workspace
+        expModel:PivotTo(CFrame.new(position))
+
+        task.wait(0.4)
+        for _, desc in ipairs(expModel:GetDescendants()) do
+            if desc:IsA("ParticleEmitter") then
+                desc.Enabled = false
+            end
+        end
+
+        local fadeDuration = 1.2
+        local tweenInfo = TweenInfo.new(fadeDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+        for _, desc in ipairs(expModel:GetDescendants()) do
+            if desc:IsA("BasePart") then
+                TweenService:Create(desc, tweenInfo, {Transparency = 1}):Play()
+            elseif desc:IsA("Decal") or desc:IsA("Texture") then
+                TweenService:Create(desc, tweenInfo, {Transparency = 1}):Play()
+            elseif desc:IsA("Light") then
+                TweenService:Create(desc, tweenInfo, {Brightness = 0}):Play()
+            end
+        end
+
+        task.wait(fadeDuration + 0.5)
+        if expModel then
+            expModel:Destroy()
+        end
+    end)
+end
+
+-- =====================================================================
+-- HÀM TẠO CỔNG KHÔNG GIAN
+-- =====================================================================
+local function triggerPortalEffect(position)
+    task.spawn(function()
+        local portalModel = loadModelFromAsset(EntityConfig.PortalAssetId)
+        if not portalModel then return end
+
+        portalModel.Name = "TeleportPortal"
+        portalModel.Parent = Workspace
+        portalModel:PivotTo(CFrame.new(position + EntityConfig.PortalYOffset))
+
+        for _, desc in ipairs(portalModel:GetDescendants()) do
+            if desc:IsA("ParticleEmitter") then
+                local oldKeypoints = desc.Size.Keypoints
+                local newKeypoints = {}
+                for _, kp in ipairs(oldKeypoints) do
+                    table.insert(newKeypoints, NumberSequenceKeypoint.new(kp.Time, kp.Value * 2.2, kp.Envelope * 2.2))
+                end
+                desc.Size = NumberSequence.new(newKeypoints)
+            end
+        end
+
+        task.wait(3.5)
+        for _, desc in ipairs(portalModel:GetDescendants()) do
+            if desc:IsA("ParticleEmitter") then
+                desc.Enabled = false
+            end
+        end
+
+        local fadeDuration = 1.5
+        local tweenInfo = TweenInfo.new(fadeDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+        for _, desc in ipairs(portalModel:GetDescendants()) do
+            if desc:IsA("BasePart") then
+                TweenService:Create(desc, tweenInfo, {Transparency = 1}):Play()
+            elseif desc:IsA("Decal") or desc:IsA("Texture") then
+                TweenService:Create(desc, tweenInfo, {Transparency = 1}):Play()
+            elseif desc:IsA("Light") then
+                TweenService:Create(desc, tweenInfo, {Brightness = 0}):Play()
+            end
+        end
+
+        task.wait(fadeDuration + 0.5)
+        if portalModel then
+            portalModel:Destroy()
+        end
+    end)
+end
+
+-- =====================================================================
+-- KỸ NĂNG: NGỌC XUẤT HIỆN -> THỰC THỂ DỊCH CHUYỂN
+-- =====================================================================
+local function executeTeleportSkill(hrp)
+    if isTeleporting or entityFinished or not rootPart then return end
+    isTeleporting = true
+
+    if rootPart then
+        rootPart.CFrame = rootPart.CFrame - Vector3.new(0, 30, 0)
+    end
+
+    local playerCF = hrp.CFrame
+    local rawTargetPos = (playerCF * CFrame.new(0, 0, -EntityConfig.TeleportTargetDistance)).Position
+    local pearlFloorPos = rawTargetPos
+    local entitySpawnPos = rawTargetPos
+
+    local pearlModel = loadModelFromAsset(EntityConfig.PearlAssetId)
+    if not pearlModel then
+        pearlModel = Instance.new("Model")
+        local p = Instance.new("Part")
+        p.Shape = Enum.PartType.Ball
+        p.Size = Vector3.new(2, 2, 2)
+        p.Material = Enum.Material.Neon
+        p.Color = Color3.fromRGB(180, 0, 255)
+        p.Anchored = true
+        p.CanCollide = false
+        p.Parent = pearlModel
+        pearlModel.PrimaryPart = p
+    end
+
+    pearlModel.Parent = Workspace
+    pearlModel:PivotTo(CFrame.new(pearlFloorPos))
+
+    local bouncePeakPos = pearlFloorPos + Vector3.new(0, EntityConfig.BounceHeight, 0)
+
+    local elapsed = 0
+    while elapsed < EntityConfig.BounceUpTime do
+        local dt = task.wait()
+        elapsed = math.min(elapsed + dt, EntityConfig.BounceUpTime)
+        local alpha = elapsed / EntityConfig.BounceUpTime
+        local easedAlpha = math.sin(alpha * (math.pi / 2))
+        local currentPos = pearlFloorPos:Lerp(bouncePeakPos, easedAlpha)
+        pearlModel:PivotTo(CFrame.new(currentPos))
+    end
+
+    elapsed = 0
+    while elapsed < EntityConfig.BounceDownTime do
+        local dt = task.wait()
+        elapsed = math.min(elapsed + dt, EntityConfig.BounceDownTime)
+        local alpha = elapsed / EntityConfig.BounceDownTime
+        local easedAlpha = alpha * alpha
+        local currentPos = bouncePeakPos:Lerp(pearlFloorPos, easedAlpha)
+        pearlModel:PivotTo(CFrame.new(currentPos))
+    end
+
+    pearlModel:PivotTo(CFrame.new(pearlFloorPos))
+    playLandSound(pearlFloorPos)
+
+    if teleportSoundInst1 then teleportSoundInst1:Play() end
+    if teleportSoundInst2 then teleportSoundInst2:Play() end
+
+    triggerTeleportShake()
+
+    triggerPortalEffect(pearlFloorPos)
+    triggerExplosionEffect(pearlFloorPos)
+
+    if pearlModel then
+        pearlModel:Destroy()
+    end
+
+    task.wait(EntityConfig.PortalTeleportDelay)
+
+    if not entityFinished and rootPart then
+        local lookAtPlayerCF = CFrame.new(entitySpawnPos, Vector3.new(hrp.Position.X, entitySpawnPos.Y, hrp.Position.Z))
+        entityModel:PivotTo(lookAtPlayerCF)
+    end
+
+    isTeleporting = false
+end
+
+-- =====================================================================
+-- PATHING & NODES
+-- =====================================================================
+local function extractPathNodes(nodesFolder)
+    local entrance = nodesFolder:FindFirstChild("Entrance")
+    if not entrance then return {} end
+
+    local path = {}
+    local current = entrance
+    while current do
+        table.insert(path, current)
+        local connections = current:FindFirstChild("Connections")
+        local nextValue = connections and connections:FindFirstChild("Next")
+        if nextValue and nextValue:IsA("ObjectValue") and nextValue.Value then
+            current = nextValue.Value
+        else
+            current = nil
+        end
+    end
+    return path
+end
+
+local function buildFullPath()
+    local fullPath = {}
+    for _, room in ipairs(Rooms:GetChildren()) do
+        if room:IsA("Model") then
+            local nodesFolder = room:FindFirstChild("EntityNodes", true)
+            if nodesFolder then
+                local roomPath = extractPathNodes(nodesFolder)
+                for _, node in ipairs(roomPath) do
+                    table.insert(fullPath, node)
+                end
+            end
+        end
+    end
+    return fullPath
+end
+
+-- =====================================================================
+-- KILL & DESPAWN
+-- =====================================================================
+local function executeKill()
+    local damageRemote = ReplicatedStorage:FindFirstChild("LocalDamage", true) or ReplicatedStorage:FindFirstChild("ChangeHealth", true)
+    if damageRemote and damageRemote:IsA("RemoteEvent") then
+        damageRemote:FireServer(EntityConfig.DamageAmount, "SittingItOut", 1, nil)
+        damageRemote:FireServer("Damage", EntityConfig.DamageAmount)
+    end
+end
+
+local function despawnEntity(isEscape)
+    if entityFinished then return end
+    entityFinished = true
+
+    if roomConnection then
+        roomConnection:Disconnect()
+        roomConnection = nil
+    end
+
+    if activeShaker then
+        RunService:UnbindFromRenderStep("BypassedCameraShaker_DeerGod")
+    end
+
+    if staticGui then
+        staticGui:Destroy()
+        staticGui = nil
+    end
+
+    if isEscape then
+        task.spawn(function()
+            local escapeSound = Instance.new("Sound")
+            escapeSound.Name = "DeerGodEscapeSound"
+            escapeSound.SoundId = GitAud(EntityConfig.EscapeSoundLink, EntityConfig.EscapeSoundFileName)
+            escapeSound.Volume = EntityConfig.EscapeSoundVolume
+            escapeSound.Parent = Workspace
+            escapeSound:Play()
+            escapeSound.Ended:Connect(function()
+                escapeSound:Destroy()
+            end)
+        end)
+    end
+
+    local fadeTime = 2.5
+    if entitySound then
+        TweenService:Create(entitySound, TweenInfo.new(fadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Volume = 0 }):Play()
+    end
+    if entityChaseSound then
+        TweenService:Create(entityChaseSound, TweenInfo.new(fadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Volume = 0 }):Play()
+    end
+
+    if rootPart and rootPart.Parent then
+        local tween = TweenService:Create(
+            rootPart,
+            TweenInfo.new(fadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { CFrame = rootPart.CFrame - Vector3.new(0, 30, 0) }
+        )
+        tween:Play()
+        tween.Completed:Wait()
+    end
+
+    if entityModel then
+        entityModel:Destroy()
+    end
+end
+
+-- =====================================================================
+-- BỘ ĐẾM CỬA & KÍCH HOẠT SPAM TỦ THEO PHÒNG
+-- =====================================================================
+local function setupDoorCounter()
+    local roomsAdded = 0
+    roomConnection = Rooms.ChildAdded:Connect(function(child)
+        if not child:IsA("Model") then return end
+        roomsAdded += 1
+        
+        -- KÍCH HOẠT SPAM TỦ/NGĂN KÉO TRONG 10S KHI MỞ PHÒNG MỚI
+        triggerGhostSpamBypass()
+
+        if roomsAdded >= 8 then
+            despawnEntity(true)
+        end
+    end)
+end
+
+-- =====================================================================
+-- MAIN LOGIC LOOP
+-- =====================================================================
+local function startEntityLogic()
+    local fullPath = buildFullPath()
+    if #fullPath == 0 then
+        warn("[Deer god] Không tìm thấy Node di chuyển!")
+        despawnEntity(false)
+        return
+    end
+
+    local startNode = fullPath[1]
+    local startPos = startNode.Position
+    local initialY = getTargetY(startPos.Y)
+    
+    entityModel:PivotTo(CFrame.new(Vector3.new(startPos.X, initialY, startPos.Z)))
+
+    if entitySound then
+        entitySound:Play()
+    end
+
+    startSmoothShakeLoop()
+    setupStaticGui()
+    startSmallNeonEffectLoop()
+    setupDoorCounter()
+
+    local currentIndex = 1
+    local chaseTimer = 0
+    local skillCastCount = 0
+    local currentTeleportDelay = EntityConfig.FirstTeleportDelay
+
+    while not entityFinished and currentIndex <= #fullPath do
+        local dt = task.wait()
+
+        local targetNode = fullPath[currentIndex]
+        local targetPos = targetNode.Position
+
+        local char = Player.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+        local currentSpeed = EntityConfig.NormalSpeed
+        local isChasing = false
+
+        if hrp then
+            local playerPos = hrp.Position
+            local distToPlayer = (rootPart.Position - playerPos).Magnitude
+
+            -- 1. KILL
+            if distToPlayer <= EntityConfig.KillRange then
+                executeKill()
+                despawnEntity(false)
+                break
+            end
+
+            -- 2. CHASE & CHECK SPEED & SKILL
+            if distToPlayer <= EntityConfig.DetectionRange then
+                isChasing = true
+                local isHiding = CheckHiding.isPlayerHiding()
+                local hasItemNearby = checkNearbyItems(playerPos)
+
+                if isHiding then
+                    currentSpeed = EntityConfig.HidingChaseSpeed
+                    chaseTimer = 0
+                elseif hasItemNearby then
+                    currentSpeed = EntityConfig.KeycardChaseSpeed
+                    chaseTimer = 0
+                else
+                    currentSpeed = EntityConfig.BaseChaseSpeed
+                    
+                    if not isTeleporting then
+                        chaseTimer = chaseTimer + dt
+                        if chaseTimer >= currentTeleportDelay then
+                            chaseTimer = 0
+                            skillCastCount = skillCastCount + 1
+
+                            if skillCastCount == 1 then
+                                currentTeleportDelay = EntityConfig.ShortTeleportDelay
+                            elseif skillCastCount % 2 == 0 then
+                                currentTeleportDelay = EntityConfig.LongTeleportDelay
+                            else
+                                currentTeleportDelay = EntityConfig.ShortTeleportDelay
+                            end
+
+                            task.spawn(function()
+                                executeTeleportSkill(hrp)
+                            end)
+                        end
+                    else
+                        chaseTimer = 0
+                    end
+                end
+
+                targetPos = playerPos
+            else
+                chaseTimer = 0
+            end
+        end
+
+        -- NHẠC CHASE
+        if isChasing then
+            if not isCurrentlyChasing then
+                isCurrentlyChasing = true
+                if entityChaseSound then
+                    if not entityChaseSound.IsPlaying then
+                        entityChaseSound:Play()
+                    end
+                    TweenService:Create(entityChaseSound, TweenInfo.new(0.3), {Volume = EntityConfig.ChaseSoundVolume}):Play()
+                end
+            end
+        else
+            if isCurrentlyChasing then
+                isCurrentlyChasing = false
+                if entityChaseSound then
+                    local tw = TweenService:Create(entityChaseSound, TweenInfo.new(1.0), {Volume = 0})
+                    tw:Play()
+                    tw.Completed:Connect(function()
+                        if not isCurrentlyChasing and entityChaseSound then
+                            entityChaseSound:Stop()
+                        end
+                    end)
+                end
+            end
+        end
+
+        -- DI CHUYỂN CÙNG ĐỘ CAO (KHÔNG BÁM SÀN)
+        if not isTeleporting then
+            if not isChasing then
+                local distToNodeXZ = (Vector3.new(rootPart.Position.X, 0, rootPart.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
+                if distToNodeXZ <= EntityConfig.Tolerance then
+                    currentIndex = currentIndex + 1
+                    if currentIndex > #fullPath then break end
+                    targetNode = fullPath[currentIndex]
+                    targetPos = targetNode.Position
+                end
+            end
+
+            -- MOVEMENT
+            local currentXZ = Vector3.new(rootPart.Position.X, 0, rootPart.Position.Z)
+            local targetXZ = Vector3.new(targetPos.X, 0, targetPos.Z)
+            local offsetXZ = targetXZ - currentXZ
+
+            if offsetXZ.Magnitude > 0 then
+                local moveDirXZ = offsetXZ.Unit
+                local moveStepXZ = math.min(currentSpeed * dt, offsetXZ.Magnitude)
+                local nextXZ = currentXZ + (moveDirXZ * moveStepXZ)
+
+                local targetY = getTargetY(targetPos.Y)
+                local nextPos = Vector3.new(nextXZ.X, targetY, nextXZ.Z)
+
+                entityModel:PivotTo(CFrame.new(nextPos, nextPos + moveDirXZ))
+            end
+        end
+    end
+
+    despawnEntity(false)
+end
+
+-- =====================================================================
+-- INIT
+-- =====================================================================
+entityModel = loadEntityModel()
+rootPart = entityModel.PrimaryPart
+task.spawn(startEntityLogic)
+

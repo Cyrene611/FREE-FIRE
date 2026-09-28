@@ -1,0 +1,980 @@
+-- ======================================================
+-- SCRIPT BOSS - FULL PHASE 1, 2, 3 + SMOOTH CROSSFADE MUSIC
+-- ======================================================
+
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Rooms = workspace:WaitForChild("GameplayFolder"):WaitForChild("Rooms")
+
+local REBOUND_URL = "https://github.com/Cyrene611/Multi-Script/raw/refs/heads/main/Rebound"
+local A120_URL    = "https://github.com/Cyrene611/Multi-Script/raw/refs/heads/main/A%20tr%C4%83m%20hai"
+local BLITZ_URL   = "https://github.com/Cyrene611/Multi-Script/raw/refs/heads/main/Blitz"
+local DEER_URL    = "https://github.com/Cyrene611/Multi-Script/raw/refs/heads/main/CONDECHUA"
+local SILENCE_URL = "https://github.com/Cyrene611/Multi-Script/raw/refs/heads/main/Silence"
+
+local MIMIC_URLS = {
+    A120_URL,
+    BLITZ_URL,
+    DEER_URL,
+    "https://github.com/Cyrene611/Multi-Script/raw/refs/heads/main/Cease",
+    "https://github.com/Cyrene611/Multi-Script/raw/refs/heads/main/RIPPER",
+    REBOUND_URL,
+    SILENCE_URL
+}
+
+local MIMIC_KEYWORDS = {
+    "a60", "a120", "silence", "blitz", "cease", "ripper", "rebound", "condechua", "deer", "spawnedentity"
+}
+
+local TARGET_PART_NAMES = {
+    "angler", "pinkie", "chainsmoker", "froger"
+}
+
+-- Cấu hình Crossfade & Âm lượng
+local FADE_TIME = 1.0 -- Tăng lên 1s để hiệu ứng chuyển nhạc hòa âm diễn ra mượt mà nhất
+local CALM_VOL = 0.5
+local TENSE_VOL = 0.7
+local P2_VOL = 0.7
+local P3_VOL = 0.8
+
+-- Cấu hình Phase 1
+local MAX_DOORS_PHASE_1 = 5
+local NO_MIMIC_CHANCE_P1 = 5
+local recentMimics = {}
+local reboundSpawned = false
+local nextDoorNoMimic = false
+local doorsOpenedP1 = 0
+local isPhase1Ended = false
+local p1Connection = nil
+
+-- Cấu hình Phase 2
+local MAX_DOORS_PHASE_2 = 10
+local phase2DoorsLeft = MAX_DOORS_PHASE_2
+local isPhase2Active = false
+local p2Connection = nil
+local p2PartDetectorConnection = nil
+
+-- Cấu hình Phase 3
+local MAX_DOORS_PHASE_3 = 10
+local phase3DoorsLeft = MAX_DOORS_PHASE_3
+local isPhase3Active = false
+local p3Connection = nil
+local p3PartDetectorConnection = nil
+
+local sliceTextLabels = {}
+
+-- ======================================================
+-- BỘ THOẠI MULTIMONSTER
+-- ======================================================
+
+local LINES_CALM = {
+    "I see you",
+    "Seems like things are gonna be different this time around",
+    "You will die tonight not the both of us",
+    "Your interesting",
+    "So many worlds so many wonders wouldn't you agree",
+    "Run all you want I will always catch up",
+    "Keep them coming"
+}
+
+local LINES_TENSE = {
+    "Better run",
+    "I'd run if I were you",
+    "Your gonna cease to exist",
+    "I'm gonna rip you apart limb by limb",
+    "What will she think",
+    "Coming through",
+    "Out of the way",
+    "And I'm coming again",
+    "Again and again and again",
+    "Nice try",
+    "Let's try this one"
+}
+local LINE_A120_EXCLUSIVE = "You think that thing that you call a \"pss\" can save you"
+
+local LINES_ENDING_P2 = {
+    "Good job you've impressed me.... SIKE THINK FAST",
+    "I will see you soon... WHICH IS NOW",
+    "it was nice seeing you again... BUT IM NOT DONE YET",
+    "whatever you win... JUST KIDDING"
+}
+
+local LINES_PHASE2 = {
+    "GOD IS NOT HERE TO BRING YOU BACK",
+    "THE LIGHTS ARENT HERE TO GUIDE YOU",
+    "THE GREEN ONE CAN REVERSE TIME ALL HE WANTS I WILL ALWAYS REMEMBER",
+    "ITS ALMOST LIKE WE HAVE DONE THIS DANCE BEFORE BUT WHERE",
+    "YOU WONT SURVIVE SO GIVE UP",
+    "IM ONLY GEETING STARTED"
+}
+
+local LINES_PHASE3 = {
+    "passed the half way point hmmm",
+    "Just give up",
+    "AND IT WILL HAPPEN AGAIN AND AGAIN AND IT WILL NEVER STOP",
+    "YES THATS IT",
+    "YOUR END IS NOW",
+    "almost like your suppressing your thoughts",
+    "BETTER RUN",
+    "this place should have been left to rot when it happened"
+}
+
+local LINES_ENDING_FINAL = {
+    "Fine you win I'm finding someone eles",
+    "Well I better get going before he tries to find me",
+    "I'm going home",
+    "Good job friend see you later",
+    "Maybe come visit me sometime",
+    "The things you do to survive"
+}
+
+-- ======================================================
+-- HỆ THỐNG HIỂN THỊ THOẠI (DIALOGUE CONTROLLER)
+-- ======================================================
+
+local dialogueGui = nil
+local dialogueContainer = nil
+
+local function setupDialogueUI()
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+    
+    dialogueGui = Instance.new("ScreenGui")
+    dialogueGui.Name = "BossDialogueGui"
+    dialogueGui.ResetOnSpawn = false
+    dialogueGui.Parent = playerGui
+
+    dialogueContainer = Instance.new("Frame")
+    dialogueContainer.Name = "DialogueContainer"
+    dialogueContainer.Size = UDim2.new(0.8, 0, 0.3, 0)
+    dialogueContainer.Position = UDim2.new(0.5, 0, 0.78, 0)
+    dialogueContainer.AnchorPoint = Vector2.new(0.5, 1)
+    dialogueContainer.BackgroundTransparency = 1
+    dialogueContainer.Parent = dialogueGui
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+    listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    listLayout.Padding = UDim.new(0, 6)
+    listLayout.Parent = dialogueContainer
+end
+
+setupDialogueUI()
+
+local dialogueLayoutOrder = 0
+
+local function speakDialogue(text)
+    if not dialogueContainer then return end
+
+    dialogueLayoutOrder += 1
+
+    local lineFrame = Instance.new("Frame")
+    lineFrame.Name = "LineFrame"
+    lineFrame.Size = UDim2.new(1, 0, 0, 36)
+    lineFrame.BackgroundTransparency = 1
+    lineFrame.LayoutOrder = dialogueLayoutOrder
+    lineFrame.Parent = dialogueContainer
+
+    local sliceCount = 6
+    local sliceHeightRatio = 1 / sliceCount
+    local labels = {}
+    local sliceFrames = {}
+
+    for i = 1, sliceCount do
+        local sliceFrame = Instance.new("Frame")
+        sliceFrame.Size = UDim2.new(1, 0, sliceHeightRatio, 0)
+        sliceFrame.Position = UDim2.new(0, 0, (i - 1) * sliceHeightRatio, 0)
+        sliceFrame.ClipsDescendants = true
+        sliceFrame.BackgroundTransparency = 1
+        sliceFrame.Parent = lineFrame
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, 0, sliceCount, 0)
+        label.Position = UDim2.new(0, 0, -(i - 1), 0)
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.TextColor3 = Color3.fromRGB(220, 20, 20)
+        label.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+        label.TextSize = 28
+        label.TextStrokeTransparency = 1
+        label.TextTransparency = 1
+        label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        label.Parent = sliceFrame
+
+        table.insert(labels, label)
+        table.insert(sliceFrames, sliceFrame)
+    end
+
+    for _, lbl in ipairs(labels) do
+        TweenService:Create(lbl, TweenInfo.new(0.35), {
+            TextTransparency = 0,
+            TextStrokeTransparency = 0.2
+        }):Play()
+    end
+
+    local isAnimating = true
+    task.spawn(function()
+        local tweenInfo = TweenInfo.new(0.03, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+        local startTime = tick()
+        while isAnimating and lineFrame.Parent do
+            local elapsedTime = tick() - startTime
+            for i, frame in ipairs(sliceFrames) do
+                local waveOffsetX = math.sin(elapsedTime * 18 + (i * 0.5)) * 0.8
+                if math.random(1, 100) <= 15 then
+                    waveOffsetX = waveOffsetX + math.random(-1, 1)
+                end
+                TweenService:Create(frame, tweenInfo, {
+                    Position = UDim2.new(0, waveOffsetX, (i - 1) * sliceHeightRatio, 0)
+                }):Play()
+            end
+            task.wait(0.02)
+        end
+    end)
+
+    task.delay(0.35 + 3.25, function()
+        for _, lbl in ipairs(labels) do
+            TweenService:Create(lbl, TweenInfo.new(0.75), {
+                TextTransparency = 1,
+                TextStrokeTransparency = 1
+            }):Play()
+        end
+        task.delay(0.75, function()
+            isAnimating = false
+            lineFrame:Destroy()
+        end)
+    end)
+end
+
+local function triggerRandomLine(linesTable, customDelay)
+    if #linesTable == 0 then return end
+    local randomLine = linesTable[math.random(1, #linesTable)]
+    local delayTime = (customDelay ~= nil) and customDelay or 1.1
+
+    if delayTime > 0 then
+        task.delay(delayTime, function()
+            speakDialogue(randomLine)
+        end)
+    else
+        speakDialogue(randomLine)
+    end
+end
+
+-- ======================================================
+-- HỆ THỐNG ÂM THANH & CROSSFADE MƯỢT MÀ
+-- ======================================================
+
+local function GitAud(soundlink, filename)
+    local FileName = filename
+    if not isfile(FileName .. ".mp3") then
+        writefile(FileName .. ".mp3", game:HttpGet(soundlink))
+    end
+    return (getcustomasset or getsynasset)(FileName .. ".mp3")
+end
+
+local calmSound = Instance.new("Sound")
+calmSound.Name = "BossCalm1Sound"
+calmSound.SoundId = GitAud("https://github.com/Cyrene611/Multi-Script/raw/refs/heads/main/calm.mp3", "p1_calm")
+calmSound.Volume = 0
+calmSound.Parent = workspace
+
+local calm2Sound = Instance.new("Sound")
+calm2Sound.Name = "BossCalm2Sound"
+calm2Sound.SoundId = GitAud("https://github.com/Cyrene611/Multi-Script/raw/refs/heads/main/A-60%20stop%20attack%20.mp3", "p1_calm2")
+calm2Sound.Volume = 0
+calm2Sound.Parent = workspace
+
+local tenseSound = Instance.new("Sound")
+tenseSound.Name = "BossTenseSound"
+tenseSound.SoundId = GitAud("https://github.com/Cyrene611/Multi-Script/raw/refs/heads/main/a-60_tense.mp3", "p1_tense")
+tenseSound.Volume = 0
+tenseSound.Looped = true
+tenseSound.Parent = workspace
+
+local phase2Sound = Instance.new("Sound")
+phase2Sound.Name = "BossPhase2Sound"
+phase2Sound.SoundId = GitAud("https://github.com/Cyrene611/Multi-Script/raw/refs/heads/main/a-60_phase1.mp3", "p2_bgm")
+phase2Sound.Volume = 0
+phase2Sound.Looped = true
+phase2Sound.Parent = workspace
+
+local phase3Sound = Instance.new("Sound")
+phase3Sound.Name = "BossPhase3Sound"
+phase3Sound.SoundId = GitAud("https://github.com/Cyrene611/Multi-Script/raw/refs/heads/main/a-60_phase2.mp3", "p3_bgm")
+phase3Sound.Volume = 0
+phase3Sound.Looped = true
+phase3Sound.Parent = workspace
+
+local ALL_MUSIC_TRACKS = { calmSound, calm2Sound, tenseSound, phase2Sound, phase3Sound }
+local currentMusicState = "NONE"
+
+-- Hàm Crossfade chính: Fade Out nhạc cũ VÀ Fade In nhạc mới CÙNG MỘT LÚC
+local function crossfadeTo(targetSound, targetVolume, isLooped, duration)
+    local fadeDuration = duration or FADE_TIME
+    targetSound.Looped = (isLooped == true)
+
+    if not targetSound.IsPlaying then
+        targetSound.Volume = 0
+        targetSound:Play()
+    end
+
+    -- Fade IN bài mới ngay lập tức
+    TweenService:Create(targetSound, TweenInfo.new(fadeDuration, Enum.EasingStyle.Linear), {Volume = targetVolume}):Play()
+
+    -- Fade OUT tất cả các bài còn lại song song cùng lúc
+    for _, sound in ipairs(ALL_MUSIC_TRACKS) do
+        if sound ~= targetSound and sound.IsPlaying then
+            local tween = TweenService:Create(sound, TweenInfo.new(fadeDuration, Enum.EasingStyle.Linear), {Volume = 0})
+            tween:Play()
+            tween.Completed:Connect(function()
+                if sound ~= targetSound and sound.Volume <= 0 then
+                    sound:Stop()
+                end
+            end)
+        end
+    end
+end
+
+local function playCalm1Music(isLooped)
+    if isPhase1Ended then return end
+    if currentMusicState == "CALM1" and calmSound.IsPlaying then return end
+
+    currentMusicState = "CALM1"
+    crossfadeTo(calmSound, CALM_VOL, isLooped)
+    triggerRandomLine(LINES_CALM)
+end
+
+local function playCalm2Music(isLooped)
+    if isPhase1Ended then return end
+    if currentMusicState == "CALM2" and calm2Sound.IsPlaying then return end
+
+    currentMusicState = "CALM2"
+    crossfadeTo(calm2Sound, CALM_VOL, isLooped)
+    triggerRandomLine(LINES_CALM)
+end
+
+local function playTenseMusic()
+    if isPhase1Ended then return end
+    if currentMusicState == "TENSE" and tenseSound.IsPlaying then return end
+
+    currentMusicState = "TENSE"
+    crossfadeTo(tenseSound, TENSE_VOL, true)
+end
+
+local function stopPhase1Music()
+    isPhase1Ended = true
+    currentMusicState = "NONE"
+
+    for _, sound in ipairs({calmSound, calm2Sound, tenseSound}) do
+        if sound.IsPlaying then
+            local tween = TweenService:Create(sound, TweenInfo.new(FADE_TIME, Enum.EasingStyle.Linear), {Volume = 0})
+            tween:Play()
+            tween.Completed:Connect(function()
+                sound:Stop()
+            end)
+        end
+    end
+end
+
+-- ======================================================
+-- BỘ NHẬN DIỆN MIMIC & DESPAWN LISTENERS
+-- ======================================================
+
+local function isMimicModel(obj)
+    if not (obj and obj:IsA("Model")) then return false end
+    local lowerName = obj.Name:lower()
+    for _, keyword in ipairs(MIMIC_KEYWORDS) do
+        if string.find(lowerName, keyword) then
+            return true
+        end
+    end
+    return false
+end
+
+local function getMimicCount()
+    local count = 0
+    for _, child in ipairs(workspace:GetChildren()) do
+        if isMimicModel(child) then
+            count += 1
+        end
+    end
+    return count
+end
+
+workspace.ChildRemoved:Connect(function(child)
+    if isMimicModel(child) then
+        if not isPhase1Ended then
+            task.delay(0.2, function()
+                if getMimicCount() == 0 and not isPhase1Ended then
+                    playCalm2Music(true)
+                end
+            end)
+        end
+
+        if isPhase2Active then
+            if math.random(1, 100) <= 50 then
+                triggerRandomLine(LINES_PHASE2)
+            end
+        end
+
+        if isPhase3Active then
+            if math.random(1, 100) <= 50 then
+                triggerRandomLine(LINES_PHASE3)
+            end
+        end
+    end
+end)
+
+local function isTargetPart(obj)
+    if obj:IsA("BasePart") then
+        local lowerName = obj.Name:lower()
+        for _, targetName in ipairs(TARGET_PART_NAMES) do
+            if string.find(lowerName, targetName) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function flashSliceTextWhite()
+    if #sliceTextLabels == 0 then return end
+
+    for _, label in ipairs(sliceTextLabels) do
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    end
+
+    task.delay(0.35, function()
+        for _, label in ipairs(sliceTextLabels) do
+            label.TextColor3 = Color3.fromRGB(200, 0, 0)
+        end
+    end)
+end
+
+local function fadeOutUI(screenGui, duration)
+    if not screenGui then return end
+    duration = duration or 0.5
+    for _, obj in ipairs(screenGui:GetDescendants()) do
+        if obj:IsA("TextLabel") then
+            TweenService:Create(obj, TweenInfo.new(duration), {
+                TextTransparency = 1,
+                TextStrokeTransparency = 1
+            }):Play()
+        elseif obj:IsA("Frame") then
+            TweenService:Create(obj, TweenInfo.new(duration), {
+                BackgroundTransparency = 1
+            }):Play()
+        end
+    end
+    task.delay(duration + 0.1, function()
+        if screenGui and screenGui.Parent then
+            screenGui:Destroy()
+        end
+    end)
+end
+
+-- ======================================================
+-- LOGIC TRIỆU HỒI MIMIC & THOẠI TENSE
+-- ======================================================
+
+local function getAvailableMimics(phaseNum)
+    local available = {}
+    for _, url in ipairs(MIMIC_URLS) do
+        if (phaseNum == 2 or phaseNum == 3) and url == DEER_URL then
+            continue
+        end
+
+        if url == REBOUND_URL and reboundSpawned then
+            continue
+        end
+
+        local isRecent = false
+        for _, recentUrl in ipairs(recentMimics) do
+            if url == recentUrl then
+                isRecent = true
+                break
+            end
+        end
+
+        if not isRecent then
+            local weight = 100
+
+            if phaseNum == 2 then
+                if url == SILENCE_URL then
+                    weight = 40
+                elseif url == BLITZ_URL or url == A120_URL then
+                    weight = 30
+                end
+            elseif phaseNum == 3 then
+                if url == SILENCE_URL then
+                    weight = 20
+                elseif url == BLITZ_URL or url == A120_URL then
+                    weight = 15
+                end
+            end
+
+            table.insert(available, {url = url, weight = weight})
+        end
+    end
+    return available
+end
+
+local function spawnRandomMimic(phaseNum)
+    local availableList = getAvailableMimics(phaseNum)
+    if #availableList == 0 then return end
+
+    local totalWeight = 0
+    for _, item in ipairs(availableList) do
+        totalWeight = totalWeight + item.weight
+    end
+
+    local randomVal = math.random(1, totalWeight)
+    local currentSum = 0
+    local selectedUrl = availableList[1].url
+
+    for _, item in ipairs(availableList) do
+        currentSum = currentSum + item.weight
+        if randomVal <= currentSum then
+            selectedUrl = item.url
+            break
+        end
+    end
+
+    if currentMusicState == "TENSE" or phaseNum == 1 then
+        local tempPool = {}
+        for _, line in ipairs(LINES_TENSE) do
+            table.insert(tempPool, line)
+        end
+        if selectedUrl == A120_URL then
+            table.insert(tempPool, LINE_A120_EXCLUSIVE)
+        end
+        triggerRandomLine(tempPool)
+    end
+
+    if selectedUrl == BLITZ_URL then
+        flashSliceTextWhite()
+    end
+
+    if selectedUrl == REBOUND_URL then
+        reboundSpawned = true
+        nextDoorNoMimic = true
+    end
+
+    table.insert(recentMimics, selectedUrl)
+    if #recentMimics > 2 then
+        table.remove(recentMimics, 1)
+    end
+
+    task.spawn(function()
+        pcall(function()
+            loadstring(game:HttpGet(selectedUrl))()
+        end)
+    end)
+end
+
+local function updateSliceText(newText)
+    for _, label in ipairs(sliceTextLabels) do
+        label.Text = newText
+    end
+end
+
+-- ======================================================
+-- PHASE 2 LOGIC (A-10)
+-- ======================================================
+
+local function createPhase2UI()
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+    sliceTextLabels = {}
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "BossPhase2Counter"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = playerGui
+
+    local mainContainer = Instance.new("Frame")
+    mainContainer.Name = "SliceContainer"
+    mainContainer.Size = UDim2.new(0, 320, 0, 65)
+    mainContainer.Position = UDim2.new(0.5, 0, 0.03, 0)
+    mainContainer.AnchorPoint = Vector2.new(0.5, 0)
+    mainContainer.BackgroundTransparency = 1
+    mainContainer.Parent = screenGui
+
+    local sliceCount = 15
+    local sliceHeightRatio = 1 / sliceCount
+    local sliceFrames = {}
+
+    for i = 1, sliceCount do
+        local sliceFrame = Instance.new("Frame")
+        sliceFrame.Name = "Slice_" .. i
+        sliceFrame.Size = UDim2.new(1, 0, sliceHeightRatio, 0)
+        sliceFrame.Position = UDim2.new(0, 0, (i - 1) * sliceHeightRatio, 0)
+        sliceFrame.ClipsDescendants = true
+        sliceFrame.BackgroundTransparency = 1
+        sliceFrame.Parent = mainContainer
+
+        local label = Instance.new("TextLabel")
+        label.Name = "Label"
+        label.Size = UDim2.new(1, 0, sliceCount, 0)
+        label.Position = UDim2.new(0, 0, -(i - 1), 0)
+        label.BackgroundTransparency = 1
+        label.Text = "A-" .. phase2DoorsLeft
+        label.TextColor3 = Color3.fromRGB(200, 0, 0)
+        label.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+        label.TextScaled = true
+        label.TextStrokeTransparency = 0.2
+        label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        label.Parent = sliceFrame
+
+        table.insert(sliceFrames, sliceFrame)
+        table.insert(sliceTextLabels, label)
+    end
+
+    task.spawn(function()
+        local tweenInfo = TweenInfo.new(0.02, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+        local startTime = tick()
+
+        while isPhase2Active and screenGui.Parent do
+            local elapsedTime = tick() - startTime
+
+            for i, frame in ipairs(sliceFrames) do
+                local speed = 25 + (i % 3) * 6
+                local amplitude = 1.2 + (i % 3) * 0.8
+                local waveOffsetX = math.sin(elapsedTime * speed + (i * 0.4)) * amplitude
+
+                if math.random(1, 100) <= 20 then
+                    waveOffsetX = waveOffsetX + math.random(-2, 2)
+                end
+
+                TweenService:Create(frame, tweenInfo, {
+                    Position = UDim2.new(0, waveOffsetX, (i - 1) * sliceHeightRatio, 0)
+                }):Play()
+            end
+
+            task.wait(0.015)
+        end
+    end)
+
+    return screenGui
+end
+
+-- ======================================================
+-- PHASE 3 LOGIC (B-5)
+-- ======================================================
+
+local function createPhase3UI()
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+    sliceTextLabels = {}
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "BossPhase3Counter"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = playerGui
+
+    local mainContainer = Instance.new("Frame")
+    mainContainer.Name = "SliceContainer"
+    mainContainer.Size = UDim2.new(0, 320, 0, 65)
+    mainContainer.Position = UDim2.new(0.5, 0, 0.03, 0)
+    mainContainer.AnchorPoint = Vector2.new(0.5, 0)
+    mainContainer.BackgroundTransparency = 1
+    mainContainer.Parent = screenGui
+
+    local sliceCount = 15
+    local sliceHeightRatio = 1 / sliceCount
+    local sliceFrames = {}
+
+    for i = 1, sliceCount do
+        local sliceFrame = Instance.new("Frame")
+        sliceFrame.Name = "Slice_" .. i
+        sliceFrame.Size = UDim2.new(1, 0, sliceHeightRatio, 0)
+        sliceFrame.Position = UDim2.new(0, 0, (i - 1) * sliceHeightRatio, 0)
+        sliceFrame.ClipsDescendants = true
+        sliceFrame.BackgroundTransparency = 1
+        sliceFrame.Parent = mainContainer
+
+        local label = Instance.new("TextLabel")
+        label.Name = "Label"
+        label.Size = UDim2.new(1, 0, sliceCount, 0)
+        label.Position = UDim2.new(0, 0, -(i - 1), 0)
+        label.BackgroundTransparency = 1
+        label.Text = "A-" .. phase3DoorsLeft
+        label.TextColor3 = Color3.fromRGB(200, 0, 0)
+        label.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+        label.TextScaled = true
+        label.TextStrokeTransparency = 0.2
+        label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        label.Parent = sliceFrame
+
+        table.insert(sliceFrames, sliceFrame)
+        table.insert(sliceTextLabels, label)
+    end
+
+    task.spawn(function()
+        local tweenInfo = TweenInfo.new(0.02, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+        local startTime = tick()
+
+        while isPhase3Active and screenGui.Parent do
+            local elapsedTime = tick() - startTime
+
+            for i, frame in ipairs(sliceFrames) do
+                local speed = 28 + (i % 3) * 6
+                local amplitude = 1.5 + (i % 3) * 0.8
+                local waveOffsetX = math.sin(elapsedTime * speed + (i * 0.4)) * amplitude
+
+                if math.random(1, 100) <= 20 then
+                    waveOffsetX = waveOffsetX + math.random(-2, 2)
+                end
+
+                TweenService:Create(frame, tweenInfo, {
+                    Position = UDim2.new(0, waveOffsetX, (i - 1) * sliceHeightRatio, 0)
+                }):Play()
+            end
+
+            task.wait(0.015)
+        end
+    end)
+
+    task.spawn(function()
+        while isPhase3Active and screenGui.Parent do
+            local offsetX = math.random(-4, 4)
+            local offsetY = math.random(-4, 4)
+            mainContainer.Position = UDim2.new(0.5, offsetX, 0.03, offsetY)
+            task.wait(0.02)
+        end
+        if mainContainer then
+            mainContainer.Position = UDim2.new(0.5, 0, 0.03, 0)
+        end
+    end)
+
+    return screenGui
+end
+
+-- ======================================================
+-- KÍCH HOẠT PHASE 3
+-- ======================================================
+
+local function startPhase3()
+    isPhase3Active = true
+
+    crossfadeTo(phase3Sound, P3_VOL, true)
+
+    local screenGui = createPhase3UI()
+
+    p3PartDetectorConnection = workspace.DescendantAdded:Connect(function(descendant)
+        if isPhase3Active and isTargetPart(descendant) then
+            flashSliceTextWhite()
+        end
+    end)
+
+    for _, descendant in ipairs(workspace:GetDescendants()) do
+        if isTargetPart(descendant) then
+            flashSliceTextWhite()
+            break
+        end
+    end
+
+    task.spawn(function()
+        for i = 1, 3 do
+            spawnRandomMimic(3)
+            task.wait(0.2)
+        end
+    end)
+
+    task.spawn(function()
+        while isPhase3Active do
+            local waitTime = math.random(13, 16)
+            task.wait(waitTime)
+
+            if not isPhase3Active then break end
+
+            spawnRandomMimic(3)
+        end
+    end)
+
+    local p3Debounce = false
+
+    p3Connection = Rooms.ChildAdded:Connect(function(child)
+        if not child:IsA("Model") or not isPhase3Active or p3Debounce then return end
+
+        p3Debounce = true
+        task.delay(0.3, function() p3Debounce = false end)
+
+        phase3DoorsLeft -= 1
+        if phase3DoorsLeft < 0 then phase3DoorsLeft = 0 end
+
+        updateSliceText("B-" .. phase3DoorsLeft)
+
+        if phase3DoorsLeft <= 0 then
+            isPhase3Active = false
+
+            if p3Connection then p3Connection:Disconnect() p3Connection = nil end
+            if p3PartDetectorConnection then p3PartDetectorConnection:Disconnect() p3PartDetectorConnection = nil end
+
+            fadeOutUI(screenGui, 0.5)
+
+            task.spawn(function()
+                while getMimicCount() > 0 do
+                    task.wait(0.5)
+                end
+
+                local tween = TweenService:Create(phase3Sound, TweenInfo.new(FADE_TIME, Enum.EasingStyle.Linear), {Volume = 0})
+                tween:Play()
+                tween.Completed:Connect(function()
+                    phase3Sound:Stop()
+                end)
+
+                triggerRandomLine(LINES_ENDING_FINAL)
+            end)
+        end
+    end)
+end
+
+-- ======================================================
+-- KÍCH HOẠT PHASE 2
+-- ======================================================
+
+local function startPhase2()
+    isPhase2Active = true
+
+    crossfadeTo(phase2Sound, P2_VOL, true)
+
+    local screenGui = createPhase2UI()
+
+    p2PartDetectorConnection = workspace.DescendantAdded:Connect(function(descendant)
+        if isPhase2Active and isTargetPart(descendant) then
+            flashSliceTextWhite()
+        end
+    end)
+
+    for _, descendant in ipairs(workspace:GetDescendants()) do
+        if isTargetPart(descendant) then
+            flashSliceTextWhite()
+            break
+        end
+    end
+
+    task.spawn(function()
+        while isPhase2Active do
+            local waitTime = math.random(17, 21)
+            task.wait(waitTime)
+
+            if not isPhase2Active then break end
+
+            spawnRandomMimic(2)
+        end
+    end)
+
+    local p2Debounce = false
+
+    p2Connection = Rooms.ChildAdded:Connect(function(child)
+        if not child:IsA("Model") or not isPhase2Active or p2Debounce then return end
+
+        p2Debounce = true
+        task.delay(0.3, function() p2Debounce = false end)
+
+        phase2DoorsLeft -= 1
+        if phase2DoorsLeft < 0 then phase2DoorsLeft = 0 end
+
+        updateSliceText("A-" .. phase2DoorsLeft)
+
+        if phase2DoorsLeft <= 0 then
+            isPhase2Active = false
+
+            if p2Connection then p2Connection:Disconnect() p2Connection = nil end
+            if p2PartDetectorConnection then p2PartDetectorConnection:Disconnect() p2PartDetectorConnection = nil end
+
+            fadeOutUI(screenGui, 0.5)
+
+            task.spawn(function()
+                while getMimicCount() > 0 do
+                    task.wait(0.5)
+                end
+
+                local tween = TweenService:Create(phase2Sound, TweenInfo.new(2.0, Enum.EasingStyle.Linear), {Volume = 0})
+                tween:Play()
+                tween.Completed:Connect(function()
+                    phase2Sound:Stop()
+                end)
+
+                task.wait(4.0)
+                triggerRandomLine(LINES_ENDING_P2, 0)
+
+                task.wait(1.0)
+                startPhase3()
+            end)
+        end
+    end)
+end
+
+-- ======================================================
+-- LOGIC PHASE 1
+-- ======================================================
+
+local function triggerPhase1Mimic()
+    if isPhase1Ended then return end
+
+    if nextDoorNoMimic then
+        nextDoorNoMimic = false
+        if getMimicCount() == 0 then
+            playCalm2Music(true)
+        end
+        return
+    end
+
+    local roll = math.random(1, 100)
+    if roll <= NO_MIMIC_CHANCE_P1 then
+        if getMimicCount() == 0 then
+            playCalm2Music(true)
+        end
+        return
+    end
+
+    playTenseMusic()
+    spawnRandomMimic(1)
+end
+
+local function startPhase1DoorListener()
+    local p1Debounce = false
+
+    p1Connection = Rooms.ChildAdded:Connect(function(child)
+        if not child:IsA("Model") or isPhase1Ended or p1Debounce then return end
+
+        p1Debounce = true
+        task.delay(0.3, function() p1Debounce = false end)
+
+        doorsOpenedP1 += 1
+        triggerPhase1Mimic()
+
+        if doorsOpenedP1 >= MAX_DOORS_PHASE_1 then
+            stopPhase1Music()
+
+            if p1Connection then
+                p1Connection:Disconnect()
+                p1Connection = nil
+            end
+
+            task.delay(1.5, function()
+                startPhase2()
+            end)
+        end
+    end)
+end
+
+-- ======================================================
+-- INTRO PHASE 1
+-- ======================================================
+
+task.spawn(function()
+    playCalm1Music(false)
+
+    local startTick = tick()
+    repeat task.wait(0.1) until calmSound.TimeLength > 0 or (tick() - startTick) > 3
+
+    local duration = calmSound.TimeLength > 0 and calmSound.TimeLength or 15
+    task.wait(duration)
+
+    if not isPhase1Ended then
+        triggerPhase1Mimic()
+        startPhase1DoorListener()
+    end
+end)
+

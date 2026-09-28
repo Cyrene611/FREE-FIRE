@@ -1,0 +1,2315 @@
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local gameplayFolder = workspace:FindFirstChild("GameplayFolder")
+if not gameplayFolder then
+    warn("Không tìm thấy 'GameplayFolder' trong Workspace!")
+    return
+end
+
+local Rooms = gameplayFolder:FindFirstChild("Rooms")
+if not Rooms then
+    warn("Không tìm thấy 'Rooms' trong GameplayFolder!")
+    return
+end
+
+local isDelayingMove = false
+local entitySound = nil
+local soundTweenVol = nil
+local soundTweenPitch = nil
+
+local currentPhase = 1
+local isFrostBarShaking = false
+local isPhase3Transition = false
+local isKeyItemNearby = false
+
+local function getAudioOffset(url, defaultFileName)
+    if getcustomasset and writefile and game.HttpGet then
+        local fileName = defaultFileName or "audio_file.mp3"
+        if not isfile or not isfile(fileName) then
+            pcall(function()
+                writefile(fileName, game:HttpGet(url))
+            end)
+        end
+        if isfile and isfile(fileName) then
+            local success, asset = pcall(function()
+                return getcustomasset(fileName)
+            end)
+            if success and asset then
+                return asset
+            end
+        end
+    end
+    return url
+end
+
+local phase1MusicUrl = "https://github.com/PressureMode4blabla/Pressure-stuff/raw/refs/heads/main/frost_start_095114624.mp3"
+local phase2MusicUrl = "https://github.com/PressureMode4blabla/Pressure-stuff/raw/refs/heads/main/frost_phase1_095130444.mp3"
+local phase3MusicUrl = "https://github.com/PressureMode4blabla/Pressure-stuff/raw/refs/heads/main/frost_phase2_095145515.mp3"
+local endingMusicUrl = "https://github.com/PressureMode4blabla/Pressure-stuff/raw/refs/heads/main/frost_ending_095156408.mp3"
+
+local phase1MusicId = getAudioOffset(phase1MusicUrl, "frost_start_music.mp3")
+local phase2MusicId = getAudioOffset(phase2MusicUrl, "frost_phase1_music.mp3")
+local phase3MusicId = getAudioOffset(phase3MusicUrl, "frost_phase2_music.mp3")
+local endingMusicId = getAudioOffset(endingMusicUrl, "frost_ending_music.mp3")
+
+local phase1Music = Instance.new("Sound")
+phase1Music.Name = "BossPhase1Music"
+phase1Music.SoundId = phase1MusicId
+phase1Music.Volume = 3.0
+phase1Music.Looped = true
+phase1Music.Parent = SoundService
+
+local phase2Music = Instance.new("Sound")
+phase2Music.Name = "BossPhase2Music"
+phase2Music.SoundId = phase2MusicId
+phase2Music.Volume = 3.0
+phase2Music.Looped = true
+phase2Music.Parent = SoundService
+
+local phase3Music = Instance.new("Sound")
+phase3Music.Name = "BossPhase3Music"
+phase3Music.SoundId = phase3MusicId
+phase3Music.Volume = 3.0
+phase3Music.Looped = true
+phase3Music.Parent = SoundService
+
+local endingMusic = Instance.new("Sound")
+endingMusic.Name = "BossEndingMusic"
+endingMusic.SoundId = endingMusicId
+endingMusic.Volume = 3.0
+endingMusic.Looped = false
+endingMusic.Parent = SoundService
+
+local bossCC = Lighting:FindFirstChild("BossColorCorrection")
+
+if not bossCC then
+    bossCC = Instance.new("ColorCorrectionEffect")
+    bossCC.Name = "BossColorCorrection"
+    bossCC.Parent = Lighting
+end
+
+bossCC.Enabled = true
+bossCC.TintColor = Color3.fromRGB(255, 255, 255)
+
+local ICE_BLUE = Color3.fromRGB(110, 180, 245)
+local NORMAL_TINT = Color3.fromRGB(255, 255, 255)
+
+local currentCCTween = nil
+
+local function tweenColorCorrection(targetColor, duration)
+    if currentCCTween then
+        currentCCTween:Cancel()
+    end
+
+    currentCCTween = TweenService:Create(
+        bossCC,
+        TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {TintColor = targetColor}
+    )
+
+    currentCCTween:Play()
+end
+
+local function triggerIntenseSound()
+    if not entitySound or not entitySound.Parent then
+        return
+    end
+
+    if soundTweenVol then
+        soundTweenVol:Cancel()
+    end
+
+    if soundTweenPitch then
+        soundTweenPitch:Cancel()
+    end
+
+    local pitchEffect = entitySound:FindFirstChildOfClass("PitchShiftSoundEffect")
+
+    local fadeInTime = 0.22
+    local fadeInInfo = TweenInfo.new(
+        fadeInTime,
+        Enum.EasingStyle.Cubic,
+        Enum.EasingDirection.Out
+    )
+
+    soundTweenVol = TweenService:Create(
+        entitySound,
+        fadeInInfo,
+        {Volume = 4.0}
+    )
+
+    soundTweenVol:Play()
+
+    if pitchEffect then
+        soundTweenPitch = TweenService:Create(
+            pitchEffect,
+            fadeInInfo,
+            {Octave = 1.21}
+        )
+
+        soundTweenPitch:Play()
+    end
+
+    local holdTime = 0.20
+
+    task.delay(fadeInTime + holdTime, function()
+        if not entitySound or not entitySound.Parent then
+            return
+        end
+
+        local fadeOutInfo = TweenInfo.new(
+            1.5,
+            Enum.EasingStyle.Sine,
+            Enum.EasingDirection.Out
+        )
+
+        soundTweenVol = TweenService:Create(
+            entitySound,
+            fadeOutInfo,
+            {Volume = 1.88}
+        )
+
+        soundTweenVol:Play()
+
+        if pitchEffect then
+            soundTweenPitch = TweenService:Create(
+                pitchEffect,
+                fadeOutInfo,
+                {Octave = 1.0}
+            )
+
+            soundTweenPitch:Play()
+        end
+    end)
+end
+
+local activeShakeInstances = {}
+
+local function addCameraShake(preset)
+    local inst = {
+        Magnitude = preset.Magnitude or 1,
+        Roughness = preset.Roughness or 16,
+
+        PosInf = preset.PosInf or Vector3.new(0.1, 0.1, 0.1),
+        RotInf = preset.RotInf or Vector3.new(0.8, 0.8, 0.8),
+
+        FadeIn = preset.FadeIn or 0,
+        SustainTime = preset.SustainTime or 0,
+        FadeOut = preset.FadeOut or 0.5,
+
+        timePassed = 0,
+
+        currentAlpha = (preset.FadeIn and preset.FadeIn > 0) and 0 or 1,
+
+        sustainLeft = preset.SustainTime or 0,
+        isDone = false,
+
+        isContinuous = preset.Continuous or false,
+
+        targetMagnMult = 0,
+        currentMagnMult = 0,
+
+        tick = math.random(-1000, 1000) + math.random()
+    }
+
+    table.insert(activeShakeInstances, inst)
+
+    return inst
+end
+
+local proximityShake = addCameraShake({
+    Magnitude = 2.2,
+    Roughness = 14,
+    PosInf = Vector3.new(0.08, 0.1, 0.08),
+    RotInf = Vector3.new(0.6, 0.5, 0.7),
+    Continuous = true
+})
+
+local function shakeCamera(presetName)
+    if isKeyItemNearby then
+        return
+    end
+
+    local intenseMult = (currentPhase == 3) and (1.12 * 1.3) or ((currentPhase == 2) and 1.12 or 1.0)
+
+    if presetName == "Explosion" then
+        addCameraShake({
+            Magnitude = 6.0 * intenseMult,
+            Roughness = 18,
+            FadeIn = 0,
+            SustainTime = 0,
+            FadeOut = 1.2,
+            PosInf = Vector3.new(0.2, 0.2, 0.2),
+            RotInf = Vector3.new(1.8, 1.2, 1.8)
+        })
+
+        triggerIntenseSound()
+
+    elseif presetName == "ImpactArrival" then
+        addCameraShake({
+            Magnitude = 7.5 * intenseMult,
+            Roughness = 22,
+            FadeIn = 0,
+            SustainTime = 0,
+            FadeOut = 0.8,
+            PosInf = Vector3.new(0.25, 0.25, 0.25),
+            RotInf = Vector3.new(2.2, 1.5, 1.5)
+        })
+
+        triggerIntenseSound()
+
+    elseif presetName == "StartMove" then
+        addCameraShake({
+            Magnitude = 5.0 * intenseMult,
+            Roughness = 15,
+            FadeIn = 0.60,
+            SustainTime = 1.0,
+            FadeOut = 1.0,
+            PosInf = Vector3.new(0.18, 0.18, 0.18),
+            RotInf = Vector3.new(1.4, 1.0, 1.4)
+        })
+
+        triggerIntenseSound()
+    end
+end
+
+RunService:BindToRenderStep(
+    "BossCameraShaker",
+    Enum.RenderPriority.Camera.Value + 100,
+    function(dt)
+        if isKeyItemNearby then
+            return
+        end
+
+        local cam = workspace.CurrentCamera
+
+        if not cam then
+            return
+        end
+
+        local totalPos = Vector3.new()
+        local totalRot = Vector3.new()
+
+        for i = #activeShakeInstances, 1, -1 do
+            local inst = activeShakeInstances[i]
+
+            if inst.isContinuous then
+                inst.currentMagnMult =
+                    inst.currentMagnMult +
+                    (inst.targetMagnMult - inst.currentMagnMult) *
+                    math.min(dt * 8, 1)
+
+                inst.currentAlpha = 1
+            else
+                if inst.FadeIn > 0 and inst.timePassed < inst.FadeIn then
+                    inst.timePassed = inst.timePassed + dt
+                    inst.currentAlpha =
+                        math.clamp(inst.timePassed / inst.FadeIn, 0, 1)
+
+                elseif inst.sustainLeft > 0 then
+                    inst.sustainLeft = inst.sustainLeft - dt
+                    inst.currentAlpha = 1
+
+                elseif inst.FadeOut > 0 then
+                    inst.currentAlpha =
+                        inst.currentAlpha - (dt / inst.FadeOut)
+
+                    if inst.currentAlpha <= 0 then
+                        inst.currentAlpha = 0
+                        inst.isDone = true
+                    end
+
+                else
+                    inst.isDone = true
+                end
+            end
+
+            if inst.isDone then
+                table.remove(activeShakeInstances, i)
+            else
+                inst.tick = inst.tick + dt * inst.Roughness
+
+                local noiseX =
+                    math.noise(inst.tick + 0.1, 10.5, 0.7) * 2
+
+                local noiseY =
+                    math.noise(0.4, inst.tick + 0.2, 10.5) * 2
+
+                local noiseZ =
+                    math.noise(10.5, 0.8, inst.tick + 0.3) * 2
+
+                local effMag =
+                    inst.Magnitude *
+                    inst.currentAlpha *
+                    (inst.isContinuous and inst.currentMagnMult or 1)
+
+                totalPos =
+                    totalPos +
+                    Vector3.new(
+                        noiseX * inst.PosInf.X,
+                        noiseY * inst.PosInf.Y,
+                        noiseZ * inst.PosInf.Z
+                    ) *
+                    effMag
+
+                totalRot =
+                    totalRot +
+                    Vector3.new(
+                        noiseX * inst.RotInf.X,
+                        noiseY * inst.RotInf.Y,
+                        noiseZ * inst.RotInf.Z
+                    ) *
+                    effMag
+            end
+        end
+
+        if totalPos.Magnitude > 0 or totalRot.Magnitude > 0 then
+            cam.CFrame =
+                cam.CFrame *
+                CFrame.new(totalPos) *
+                CFrame.Angles(
+                    math.rad(totalRot.X),
+                    math.rad(totalRot.Y),
+                    math.rad(totalRot.Z)
+                )
+        end
+    end
+)
+
+shakeCamera("Explosion")
+
+coroutine.wrap(function()
+    local part = Instance.new("Part")
+    part.Name = "Bound"
+    part.Parent = workspace
+
+    local lighting = game:GetService("Lighting")
+    local mainCC = lighting:FindFirstChild("MainColorCorrection")
+
+    if mainCC and mainCC:IsA("ColorCorrectionEffect") then
+        mainCC.TintColor = Color3.fromRGB(50, 130, 255)
+        mainCC.Contrast = 0.24
+        mainCC.Saturation = -0.84
+
+        TweenService:Create(
+            mainCC,
+            TweenInfo.new(10),
+            {Contrast = 0}
+        ):Play()
+
+        TweenService:Create(
+            mainCC,
+            TweenInfo.new(10),
+            {Saturation = 0}
+        ):Play()
+
+        TweenService:Create(
+            mainCC,
+            TweenInfo.new(8),
+            {TintColor = Color3.fromRGB(255, 255, 255)}
+        ):Play()
+    end
+end)()
+
+local mainGui = playerGui:WaitForChild("Main")
+local healthBarOriginal =
+    mainGui:FindFirstChild("Health") or
+    mainGui:FindFirstChild("Health", true)
+
+if not healthBarOriginal then
+    warn("Không tìm thấy thanh Health gốc!")
+    return
+end
+
+local oldFrostBar = mainGui:FindFirstChild("FrostBar", true)
+
+if oldFrostBar then
+    oldFrostBar:Destroy()
+end
+
+local frostBar = healthBarOriginal:Clone()
+frostBar.Name = "FrostBar"
+frostBar.Size = UDim2.new(
+    0.200000003,
+    0,
+    0.100000001,
+    0
+)
+
+frostBar.Parent = healthBarOriginal.Parent
+frostBar.Visible = true
+
+local BASE_POS = UDim2.new(
+    0.119999997,
+    0,
+    0.992489278,
+    0
+)
+
+local function UpdatePosition()
+    if not isFrostBarShaking
+        and not isPhase3Transition
+        and currentPhase < 3 then
+
+        local healthHeight = healthBarOriginal.AbsoluteSize.Y
+
+        frostBar.Position = UDim2.new(
+            BASE_POS.X.Scale,
+            BASE_POS.X.Offset,
+            BASE_POS.Y.Scale,
+            BASE_POS.Y.Offset - healthHeight - 5
+        )
+    end
+end
+
+UpdatePosition()
+
+healthBarOriginal:GetPropertyChangedSignal(
+    "AbsoluteSize"
+):Connect(UpdatePosition)
+
+healthBarOriginal:GetPropertyChangedSignal(
+    "Position"
+):Connect(UpdatePosition)
+
+RunService.RenderStepped:Connect(function()
+    if isFrostBarShaking
+        and frostBar
+        and frostBar.Visible
+        and healthBarOriginal
+        and not isPhase3Transition then
+
+        local shakeX = math.random(-2, 2)
+        local shakeY = math.random(-2, 2)
+
+        local healthHeight = healthBarOriginal.AbsoluteSize.Y
+
+        frostBar.Position = UDim2.new(
+            BASE_POS.X.Scale,
+            BASE_POS.X.Offset + shakeX,
+            BASE_POS.Y.Scale,
+            BASE_POS.Y.Offset - healthHeight - 5 + shakeY
+        )
+    end
+end)
+
+local frostImageLabel =
+    frostBar:FindFirstChild("ImageLabel", true)
+
+local frostSkull =
+    frostBar:FindFirstChild("Skull", true)
+
+local textLabel =
+    frostBar:FindFirstChild("TextLabel", true)
+
+local originalColor =
+    frostImageLabel and
+    frostImageLabel.ImageColor3 or
+    Color3.fromRGB(255, 255, 255)
+
+local customImageLabel =
+    frostBar:FindFirstChild("FrostIcon", true)
+
+if not customImageLabel then
+    customImageLabel = Instance.new("ImageLabel")
+
+    customImageLabel.Name = "FrostIcon"
+    customImageLabel.Image = "rbxassetid://88317818435485"
+    customImageLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+    customImageLabel.Size = UDim2.new(0.9, 0, 0.9, 0)
+    customImageLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+    customImageLabel.ImageColor3 = originalColor
+    customImageLabel.BackgroundTransparency = 1
+    customImageLabel.ZIndex = 2
+
+    if frostImageLabel then
+        customImageLabel.Parent = frostImageLabel
+    else
+        customImageLabel.Parent = frostBar
+    end
+end
+
+if textLabel and textLabel:IsA("TextLabel") then
+    textLabel.Visible = true
+    textLabel.ZIndex = 10
+end
+
+for _, desc in ipairs(frostBar:GetDescendants()) do
+    if desc:IsA("GuiObject") then
+        desc:SetAttribute(
+            "OrigBgTrans",
+            desc.BackgroundTransparency
+        )
+
+        if desc:IsA("ImageLabel")
+            or desc:IsA("ImageButton") then
+
+            desc:SetAttribute(
+                "OrigImgTrans",
+                desc.ImageTransparency
+            )
+
+        elseif desc:IsA("TextLabel")
+            or desc:IsA("TextButton") then
+
+            desc:SetAttribute(
+                "OrigTextTrans",
+                desc.TextTransparency
+            )
+        end
+
+    elseif desc:IsA("UIStroke") then
+        desc:SetAttribute(
+            "OrigStrokeTrans",
+            desc.Transparency
+        )
+    end
+end
+
+local MaxFrost = 100
+local CurrentFrost = 100
+local isFadedOut = false
+local activeBrokenNeonPoint = nil
+
+local function FadeFrostBar(fadeIn)
+    local targetAlpha = fadeIn and 0 or 1
+
+    if fadeIn then
+        frostBar.Visible = true
+    end
+
+    for _, desc in ipairs(frostBar:GetDescendants()) do
+        local goals = {}
+
+        if desc:IsA("ImageLabel")
+            or desc:IsA("ImageButton") then
+
+            local orig =
+                desc:GetAttribute("OrigImgTrans") or 0
+
+            goals.ImageTransparency =
+                orig + (1 - orig) * targetAlpha
+
+        elseif desc:IsA("TextLabel")
+            or desc:IsA("TextButton") then
+
+            local orig =
+                desc:GetAttribute("OrigTextTrans") or 0
+
+            goals.TextTransparency =
+                orig + (1 - orig) * targetAlpha
+        end
+
+        if desc:IsA("GuiObject") then
+            local origBg =
+                desc:GetAttribute("OrigBgTrans") or 1
+
+            goals.BackgroundTransparency =
+                origBg + (1 - origBg) * targetAlpha
+
+        elseif desc:IsA("UIStroke") then
+            local origStroke =
+                desc:GetAttribute("OrigStrokeTrans") or 0
+
+            goals.Transparency =
+                origStroke + (1 - origStroke) * targetAlpha
+        end
+
+        if next(goals) ~= nil then
+            TweenService:Create(
+                desc,
+                TweenInfo.new(
+                    0.75,
+                    Enum.EasingStyle.Quad,
+                    Enum.EasingDirection.Out
+                ),
+                goals
+            ):Play()
+        end
+    end
+
+    if not fadeIn then
+        task.delay(0.75, function()
+            if isFadedOut
+                and (
+                    CurrentFrost >= MaxFrost
+                    or CurrentFrost <= 0
+                ) then
+
+                frostBar.Visible = false
+            end
+        end)
+    end
+end
+
+local function UpdateFrost(targetValue)
+    if currentPhase >= 3 then
+        return
+    end
+
+    CurrentFrost =
+        math.clamp(targetValue, 0, MaxFrost)
+
+    if CurrentFrost >= MaxFrost
+        or CurrentFrost <= 0 then
+
+        if not isFadedOut then
+            isFadedOut = true
+            FadeFrostBar(false)
+        end
+
+    else
+
+        if isFadedOut or not frostBar.Visible then
+            isFadedOut = false
+            FadeFrostBar(true)
+        end
+    end
+
+    local v9 =
+        (MaxFrost - CurrentFrost) / 20
+
+    local v10 = math.floor(v9)
+
+    local v11 =
+        (MaxFrost - CurrentFrost - v10 * 20) / 5
+
+    local v12 = math.floor(v11)
+
+    if frostImageLabel then
+        frostImageLabel.ImageRectOffset =
+            Vector2.new(v12 * 205, v10 * 205)
+    end
+
+    if textLabel and textLabel:IsA("TextLabel") then
+        textLabel.Text =
+            tostring(math.floor(CurrentFrost))
+    end
+
+    local targetColor
+
+    if CurrentFrost <= 0 then
+        targetColor =
+            Color3.fromRGB(80, 80, 80)
+    else
+        targetColor =
+            Color3.fromRGB(130, 35, 35):Lerp(
+                originalColor,
+                CurrentFrost / MaxFrost
+            )
+    end
+
+    if frostImageLabel then
+        frostImageLabel.ImageColor3 = targetColor
+    end
+
+    if frostSkull then
+        frostSkull.ImageColor3 = targetColor
+    end
+
+    if customImageLabel then
+        customImageLabel.ImageColor3 = targetColor
+    end
+
+    if textLabel and textLabel:IsA("TextLabel") then
+        textLabel.TextColor3 = targetColor
+    end
+end
+
+local function getPenultimateRoom()
+    local validRooms = {}
+
+    for _, child in ipairs(Rooms:GetChildren()) do
+        if child:IsA("Model")
+            and (
+                child:FindFirstChild("Floors")
+                or child:WaitForChild("Floors", 2)
+            ) then
+
+            table.insert(validRooms, child)
+        end
+    end
+
+    if #validRooms < 2 then
+        return nil
+    end
+
+    return validRooms[#validRooms - 1]
+end
+
+local function getRoomCenter(targetRoom)
+    if not targetRoom then
+        return nil
+    end
+
+    local floorsFolder =
+        targetRoom:FindFirstChild("Floors")
+        or targetRoom:WaitForChild("Floors", 3)
+
+    if not floorsFolder then
+        return nil
+    end
+
+    local floorParts = {}
+
+    for _, child in ipairs(floorsFolder:GetDescendants()) do
+        if child:IsA("BasePart") then
+            table.insert(floorParts, child)
+        end
+    end
+
+    if #floorParts == 0 then
+        return nil
+    end
+
+    local totalArea = 0
+    local sumX = 0
+    local sumZ = 0
+
+    for _, part in ipairs(floorParts) do
+        local area =
+            part.Size.X * part.Size.Z
+
+        sumX =
+            sumX + (part.Position.X * area)
+
+        sumZ =
+            sumZ + (part.Position.Z * area)
+
+        totalArea =
+            totalArea + area
+    end
+
+    if totalArea == 0 then
+        return nil
+    end
+
+    local avgX =
+        sumX / totalArea
+
+    local avgZ =
+        sumZ / totalArea
+
+    local closestPart = nil
+    local shortestDistance = math.huge
+
+    for _, part in ipairs(floorParts) do
+        local dist =
+            (
+                Vector2.new(
+                    part.Position.X,
+                    part.Position.Z
+                )
+                -
+                Vector2.new(avgX, avgZ)
+            ).Magnitude
+
+        if dist < shortestDistance then
+            shortestDistance = dist
+            closestPart = part
+        end
+    end
+
+    if not closestPart then
+        return nil
+    end
+
+    local floorTopY =
+        closestPart.Position.Y +
+        (closestPart.Size.Y / 2)
+
+    return Vector3.new(
+        closestPart.Position.X,
+        floorTopY + 4,
+        closestPart.Position.Z
+    )
+end
+
+local function sharpOutQuad(t)
+    return 1 - math.pow(1 - t, 3)
+end
+
+local function moveEntityTo(entityModel, targetPos, speed)
+    speed = speed or 125
+
+    local startPos =
+        entityModel:GetPivot().Position
+
+    local distance =
+        (targetPos - startPos).Magnitude
+
+    if distance < 0.5 then
+        return
+    end
+
+    local duration =
+        distance / speed
+
+    task.delay(0.075, function()
+        shakeCamera("StartMove")
+        tweenColorCorrection(ICE_BLUE, 0.15)
+    end)
+
+    local elapsed = 0
+
+    local moveDirection =
+        (
+            Vector3.new(
+                targetPos.X,
+                startPos.Y,
+                targetPos.Z
+            ) - startPos
+        ).Unit
+
+    while elapsed < duration do
+        local dt = RunService.Heartbeat:Wait()
+
+        elapsed =
+            elapsed + dt
+
+        local progress =
+            math.clamp(
+                elapsed / duration,
+                0,
+                1
+            )
+
+        local easedProgress =
+            sharpOutQuad(progress)
+
+        local currentPos =
+            startPos:Lerp(
+                targetPos,
+                easedProgress
+            )
+
+        if moveDirection.Magnitude > 0 then
+            entityModel:PivotTo(
+                CFrame.lookAt(
+                    currentPos,
+                    currentPos + moveDirection
+                )
+            )
+        else
+            entityModel:PivotTo(
+                CFrame.new(currentPos)
+            )
+        end
+    end
+
+    if moveDirection.Magnitude > 0 then
+        entityModel:PivotTo(
+            CFrame.lookAt(
+                targetPos,
+                targetPos + moveDirection
+            )
+        )
+    else
+        entityModel:PivotTo(
+            CFrame.new(targetPos)
+        )
+    end
+
+    shakeCamera("ImpactArrival")
+end
+
+local function runSupportLightScript()
+    task.spawn(function()
+        local localPlayer = Players.LocalPlayer
+
+        local character =
+            localPlayer.Character
+            or localPlayer.CharacterAdded:Wait()
+
+        local hrp =
+            character:WaitForChild(
+                "HumanoidRootPart",
+                5
+            )
+
+        if not hrp then
+            return
+        end
+
+        local CHARGE_SOUND_ID =
+            "rbxassetid://4227579935"
+
+        local SHATTER_SOUND_ID =
+            "rbxassetid://106111183159884"
+
+        local function fadeModelParticles(
+            model,
+            isFadeOut,
+            duration
+        )
+            duration = duration or 0.75
+
+            local particleData = {}
+
+            for _, desc in ipairs(
+                model:GetDescendants()
+            ) do
+                if desc:IsA("ParticleEmitter") then
+                    table.insert(
+                        particleData,
+                        {
+                            emitter = desc,
+                            originalTransparency =
+                                desc.Transparency
+                        }
+                    )
+                end
+            end
+
+            if #particleData == 0 then
+                return
+            end
+
+            local fadeVal =
+                Instance.new("NumberValue")
+
+            fadeVal.Value =
+                isFadeOut and 0 or 1
+
+            for _, data in ipairs(particleData) do
+                local origKeypoints =
+                    data.originalTransparency.Keypoints
+
+                local initialKeypoints = {}
+
+                for _, kp in ipairs(origKeypoints) do
+                    local initialVal =
+                        isFadeOut and kp.Value or 1
+
+                    table.insert(
+                        initialKeypoints,
+                        NumberSequenceKeypoint.new(
+                            kp.Time,
+                            initialVal
+                        )
+                    )
+                end
+
+                data.emitter.Transparency =
+                    NumberSequence.new(
+                        initialKeypoints
+                    )
+            end
+
+            local connection =
+                fadeVal.Changed:Connect(
+                    function(factor)
+                        for _, data in ipairs(
+                            particleData
+                        ) do
+                            local origKeypoints =
+                                data.originalTransparency.Keypoints
+
+                            local newKeypoints = {}
+
+                            for _, kp in ipairs(
+                                origKeypoints
+                            ) do
+                                local currentVal =
+                                    kp.Value +
+                                    (1 - kp.Value) *
+                                    factor
+
+                                table.insert(
+                                    newKeypoints,
+                                    NumberSequenceKeypoint.new(
+                                        kp.Time,
+                                        math.clamp(
+                                            currentVal,
+                                            0,
+                                            1
+                                        )
+                                    )
+                                )
+                            end
+
+                            data.emitter.Transparency =
+                                NumberSequence.new(
+                                    newKeypoints
+                                )
+                        end
+                    end
+                )
+
+            local tweenInfo =
+                TweenInfo.new(
+                    duration,
+                    Enum.EasingStyle.Linear
+                )
+
+            local targetFactor =
+                isFadeOut and 1 or 0
+
+            local tween =
+                TweenService:Create(
+                    fadeVal,
+                    tweenInfo,
+                    {Value = targetFactor}
+                )
+
+            tween:Play()
+            tween.Completed:Wait()
+
+            connection:Disconnect()
+            fadeVal:Destroy()
+        end
+
+        local targetRoom =
+            getPenultimateRoom()
+
+        if not targetRoom then
+            return
+        end
+
+        local candidates = {}
+
+        for _, desc in ipairs(
+            targetRoom:GetDescendants()
+        ) do
+            if desc:IsA("BasePart")
+                and desc.Name:lower() == "smallneon"
+                and not desc:GetAttribute(
+                    "AlreadyUsed"
+                ) then
+
+                table.insert(
+                    candidates,
+                    desc
+                )
+            end
+        end
+
+        if #candidates == 0 then
+            return
+        end
+
+        local selectedNeon =
+            candidates[
+                math.random(
+                    1,
+                    #candidates
+                )
+            ]
+
+        selectedNeon:SetAttribute(
+            "AlreadyUsed",
+            true
+        )
+
+        local lightHighlight =
+            Instance.new("Highlight")
+
+        lightHighlight.Name =
+            "SupportLightHighlight"
+
+        lightHighlight.FillColor =
+            Color3.fromRGB(0, 255, 0)
+
+        lightHighlight.OutlineColor =
+            Color3.fromRGB(0, 255, 0)
+
+        lightHighlight.FillTransparency =
+            0.2
+
+        lightHighlight.OutlineTransparency =
+            0
+
+        lightHighlight.DepthMode =
+            Enum.HighlightDepthMode.AlwaysOnTop
+
+        lightHighlight.Adornee =
+            selectedNeon
+
+        lightHighlight.Parent =
+            selectedNeon
+
+        task.spawn(function()
+            task.wait(1.0)
+
+            local blinkTimes = 3
+
+            for i = 1, blinkTimes do
+                if lightHighlight
+                    and lightHighlight.Parent then
+
+                    lightHighlight.Enabled = false
+                    task.wait(0.08)
+
+                    lightHighlight.Enabled = true
+                    task.wait(0.08)
+                end
+            end
+
+            if lightHighlight
+                and lightHighlight.Parent then
+
+                local fadeHL =
+                    TweenService:Create(
+                        lightHighlight,
+                        TweenInfo.new(
+                            0.18,
+                            Enum.EasingStyle.Quad,
+                            Enum.EasingDirection.Out
+                        ),
+                        {
+                            FillTransparency = 1,
+                            OutlineTransparency = 1
+                        }
+                    )
+
+                fadeHL:Play()
+                fadeHL.Completed:Wait()
+
+                lightHighlight:Destroy()
+            end
+        end)
+
+        local originalLights = {}
+
+        for _, child in ipairs(
+            selectedNeon:GetChildren()
+        ) do
+            if child:IsA("Light") then
+                table.insert(
+                    originalLights,
+                    child
+                )
+            end
+        end
+
+        if selectedNeon.Parent then
+            for _, child in ipairs(
+                selectedNeon.Parent:GetChildren()
+            ) do
+                if child:IsA("Light") then
+                    table.insert(
+                        originalLights,
+                        child
+                    )
+                end
+            end
+        end
+
+        local greenColor =
+            Color3.fromRGB(0, 255, 0)
+
+        local light =
+            Instance.new("PointLight")
+
+        light.Color = greenColor
+        light.Brightness = 0
+        light.Range = 0
+        light.Shadows = true
+        light.Parent = selectedNeon
+
+        selectedNeon.Material =
+            Enum.Material.Neon
+
+        local chargeSound =
+            Instance.new("Sound")
+
+        chargeSound.SoundId =
+            CHARGE_SOUND_ID
+
+        chargeSound.Volume = 10
+        chargeSound.RollOffMinDistance = 25
+        chargeSound.RollOffMaxDistance = 200
+        chargeSound.Parent = selectedNeon
+
+        local pitchEffect =
+            Instance.new("PitchShiftSoundEffect")
+
+        pitchEffect.Octave = 0.9
+        pitchEffect.Parent = chargeSound
+
+        chargeSound:Play()
+
+        local pitchTween =
+            TweenService:Create(
+                pitchEffect,
+                TweenInfo.new(
+                    1.0,
+                    Enum.EasingStyle.Quad,
+                    Enum.EasingDirection.Out
+                ),
+                {Octave = 1.05}
+            )
+
+        pitchTween:Play()
+
+        local targetRangeVal = (currentPhase == 3) and 32 or 18
+
+        local tweenInfoAppear =
+            TweenInfo.new(
+                1.0,
+                Enum.EasingStyle.Quad,
+                Enum.EasingDirection.Out
+            )
+
+        local neonTween =
+            TweenService:Create(
+                selectedNeon,
+                tweenInfoAppear,
+                {Color = greenColor}
+            )
+
+        local lightTweenAppear =
+            TweenService:Create(
+                light,
+                tweenInfoAppear,
+                {
+                    Brightness = 1.5,
+                    Range = targetRangeVal
+                }
+            )
+
+        neonTween:Play()
+        lightTweenAppear:Play()
+
+        task.wait(1.0)
+
+        if chargeSound
+            and chargeSound.Parent then
+
+            chargeSound:Stop()
+            chargeSound:Destroy()
+        end
+
+        local tweenInfoDisappear =
+            TweenInfo.new(
+                0.15,
+                Enum.EasingStyle.Quad,
+                Enum.EasingDirection.In
+            )
+
+        local lightTweenDisappear =
+            TweenService:Create(
+                light,
+                tweenInfoDisappear,
+                {
+                    Brightness = 0,
+                    Range = 0
+                }
+            )
+
+        lightTweenDisappear:Play()
+
+        task.wait(0.15)
+
+        for _, origLight in ipairs(
+            originalLights
+        ) do
+            if origLight
+                and origLight.Parent then
+
+                origLight:Destroy()
+            end
+        end
+
+        if light and light.Parent then
+            light:Destroy()
+        end
+
+        local shatterSound =
+            Instance.new("Sound")
+
+        shatterSound.SoundId =
+            SHATTER_SOUND_ID
+
+        shatterSound.Volume = 6
+        shatterSound.RollOffMinDistance = 15
+        shatterSound.RollOffMaxDistance = 200
+        shatterSound.Parent = selectedNeon
+
+        shatterSound:Play()
+
+        shatterSound.Ended:Connect(
+            function()
+                shatterSound:Destroy()
+            end
+        )
+
+        local spawnCFrame =
+            selectedNeon.CFrame
+
+        if selectedNeon
+            and selectedNeon.Parent then
+
+            selectedNeon.Material =
+                Enum.Material.Glass
+
+            selectedNeon.Color =
+                Color3.fromRGB(0, 0, 0)
+
+            selectedNeon.Transparency = 0.88
+        end
+
+        activeBrokenNeonPoint =
+            selectedNeon
+
+        local brokenLight =
+            Instance.new("PointLight")
+
+        brokenLight.Color =
+            greenColor
+
+        brokenLight.Brightness = 0
+        brokenLight.Range = 0
+        brokenLight.Shadows = false
+        brokenLight.Parent = selectedNeon
+
+        local targetMaxRange = (currentPhase == 3) and 32 or 18
+
+        local brokenAppear =
+            TweenService:Create(
+                brokenLight,
+                TweenInfo.new(
+                    0.3,
+                    Enum.EasingStyle.Quad,
+                    Enum.EasingDirection.Out
+                ),
+                {
+                    Brightness = 0.8,
+                    Range = targetMaxRange
+                }
+            )
+
+        brokenAppear:Play()
+
+        local isPulsing = true
+
+        task.spawn(function()
+            brokenAppear.Completed:Wait()
+
+            local toggle = false
+
+            local pulseInfo =
+                TweenInfo.new(
+                    0.6,
+                    Enum.EasingStyle.Sine,
+                    Enum.EasingDirection.InOut
+                )
+
+            while isPulsing
+                and brokenLight
+                and brokenLight.Parent do
+
+                toggle = not toggle
+                local dynamicMaxRange = (currentPhase == 3) and 32 or 18
+                local dynamicMinRange = (currentPhase == 3) and 28 or 14
+
+                local pulseTween =
+                    TweenService:Create(
+                        brokenLight,
+                        pulseInfo,
+                        {
+                            Brightness =
+                                toggle and 0.6 or 0.8,
+
+                            Range =
+                                toggle and dynamicMinRange or dynamicMaxRange
+                        }
+                    )
+
+                pulseTween:Play()
+                pulseTween.Completed:Wait()
+            end
+        end)
+
+        task.spawn(function()
+            local success, objects =
+                pcall(function()
+                    return game:GetObjects(
+                        "rbxassetid://74182107802951"
+                    )
+                end)
+
+            if success
+                and objects
+                and #objects > 0 then
+
+                local effectModel =
+                    objects[1]
+
+                for _, desc in ipairs(
+                    effectModel:GetDescendants()
+                ) do
+                    if desc:IsA("BasePart") then
+                        desc.Anchored = true
+
+                    elseif desc:IsA("ParticleEmitter") then
+                        desc.Enabled = true
+                    end
+                end
+
+                if effectModel:IsA("BasePart") then
+                    effectModel.Anchored = true
+                end
+
+                if effectModel:IsA("Model") then
+                    effectModel:PivotTo(
+                        spawnCFrame
+                    )
+                elseif effectModel:IsA("BasePart") then
+                    effectModel.CFrame =
+                        spawnCFrame
+                end
+
+                effectModel.Parent =
+                    workspace
+
+                task.delay(0.9, function()
+                    if effectModel
+                        and effectModel.Parent then
+
+                        for _, desc in ipairs(
+                            effectModel:GetDescendants()
+                        ) do
+                            if desc:IsA("ParticleEmitter") then
+                                local parent =
+                                    desc.Parent
+
+                                if parent
+                                    and parent:IsA("Attachment")
+                                    and parent.Name:lower() == "no" then
+
+                                    desc.Enabled = false
+                                end
+                            end
+                        end
+                    end
+                end)
+
+                fadeModelParticles(
+                    effectModel,
+                    false,
+                    0.3
+                )
+
+                task.wait(17)
+
+                isPulsing = false
+
+                task.spawn(function()
+                    if brokenLight
+                        and brokenLight.Parent then
+
+                        local fadeOutLight =
+                            TweenService:Create(
+                                brokenLight,
+                                TweenInfo.new(
+                                    1.0,
+                                    Enum.EasingStyle.Quad,
+                                    Enum.EasingDirection.In
+                                ),
+                                {
+                                    Brightness = 0,
+                                    Range = 0
+                                }
+                            )
+
+                        fadeOutLight:Play()
+                        fadeOutLight.Completed:Wait()
+
+                        brokenLight:Destroy()
+                    end
+                end)
+
+                fadeModelParticles(
+                    effectModel,
+                    true,
+                    1.0
+                )
+
+                if effectModel
+                    and effectModel.Parent then
+
+                    effectModel:Destroy()
+                end
+            end
+        end)
+
+        task.wait(17)
+
+        if activeBrokenNeonPoint ==
+            selectedNeon then
+
+            activeBrokenNeonPoint = nil
+        end
+    end)
+end
+
+local function animateFrostBarFall()
+    isFrostBarShaking = false
+    isPhase3Transition = true
+    isFadedOut = false
+
+    if phase2Music then
+        local fadeOutMusic = TweenService:Create(
+            phase2Music,
+            TweenInfo.new(1.5),
+            {Volume = 0}
+        )
+        fadeOutMusic:Play()
+
+        task.delay(1.5, function()
+            if phase2Music then
+                phase2Music:Stop()
+                phase2Music.Volume = 3.0
+            end
+        end)
+    end
+
+    frostBar.Visible = true
+    frostBar.AnchorPoint = Vector2.new(0.5, 0.5)
+    frostBar.Rotation = 0
+
+    for _, desc in ipairs(frostBar:GetDescendants()) do
+        if desc:IsA("ImageLabel") or desc:IsA("ImageButton") then
+            desc.ImageTransparency = desc:GetAttribute("OrigImgTrans") or 0
+        elseif desc:IsA("TextLabel") or desc:IsA("TextButton") then
+            desc.TextTransparency = desc:GetAttribute("OrigTextTrans") or 0
+        end
+
+        if desc:IsA("GuiObject") then
+            desc.BackgroundTransparency = desc:GetAttribute("OrigBgTrans") or 1
+        elseif desc:IsA("UIStroke") then
+            desc.Transparency = desc:GetAttribute("OrigStrokeTrans") or 0
+        end
+    end
+
+    local originalSize = frostBar.Size
+    local targetScaledSize = UDim2.new(
+        originalSize.X.Scale * 1.5,
+        originalSize.X.Offset * 1.5,
+        originalSize.Y.Scale * 1.5,
+        originalSize.Y.Offset * 1.5
+    )
+
+    local centerTween = TweenService:Create(
+        frostBar,
+        TweenInfo.new(
+            0.75,
+            Enum.EasingStyle.Quad,
+            Enum.EasingDirection.Out
+        ),
+        {
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+            Size = targetScaledSize,
+            Rotation = 0
+        }
+    )
+
+    centerTween:Play()
+    centerTween.Completed:Wait()
+
+    task.wait(0.25)
+
+    local shakeStart = os.clock()
+
+    local shakeConnection
+    shakeConnection = RunService.RenderStepped:Connect(function()
+        local elapsed = os.clock() - shakeStart
+
+        if elapsed >= 0.75 then
+            return
+        end
+
+        local progress = elapsed / 0.75
+        local strength = 14 + (progress * 12)
+
+        local shakeX = math.random(-math.floor(strength), math.floor(strength))
+        local shakeY = math.random(-math.floor(strength), math.floor(strength))
+        local rotation = math.random(-12, 12)
+
+        frostBar.Position = UDim2.new(0.5, shakeX, 0.5, shakeY)
+        frostBar.Rotation = rotation
+    end)
+
+    task.wait(0.75)
+
+    if shakeConnection then
+        shakeConnection:Disconnect()
+    end
+
+    frostBar.Position = UDim2.new(0.5, 0, 0.5, 0)
+    frostBar.Rotation = 0
+
+    task.wait(0.2)
+
+    shakeCamera("Explosion")
+
+    local fallStart = os.clock()
+    local xVelocity = math.random(-38, 38)
+    local yVelocity = -120
+    local gravity = 750
+    local rotationVelocity = math.random(-120, 120)
+
+    local fallConnection
+    fallConnection = RunService.RenderStepped:Connect(function()
+        local elapsed = os.clock() - fallStart
+
+        if elapsed > 2.0 then
+            if fallConnection then
+                fallConnection:Disconnect()
+                fallConnection = nil
+            end
+            return
+        end
+
+        local currentX = xVelocity * elapsed
+        local currentY = yVelocity * elapsed + 0.5 * gravity * elapsed * elapsed
+
+        frostBar.Position = UDim2.new(0.5, currentX, 0.5, currentY)
+        frostBar.Rotation = rotationVelocity * elapsed
+
+        local fadeStart = 1.2
+        if elapsed > fadeStart then
+            local fadeProgress = math.clamp((elapsed - fadeStart) / 0.7, 0, 1)
+
+            for _, desc in ipairs(frostBar:GetDescendants()) do
+                if desc:IsA("ImageLabel") or desc:IsA("ImageButton") then
+                    desc.ImageTransparency = math.max(desc.ImageTransparency, fadeProgress)
+                elseif desc:IsA("TextLabel") or desc:IsA("TextButton") then
+                    desc.TextTransparency = math.max(desc.TextTransparency, fadeProgress)
+                elseif desc:IsA("GuiObject") then
+                    desc.BackgroundTransparency = math.max(desc.BackgroundTransparency, fadeProgress)
+                elseif desc:IsA("UIStroke") then
+                    desc.Transparency = math.max(desc.Transparency, fadeProgress)
+                end
+            end
+        end
+    end)
+
+    task.delay(2.1, function()
+        if fallConnection then
+            fallConnection:Disconnect()
+            fallConnection = nil
+        end
+        frostBar.Visible = false
+    end)
+
+    task.delay(0.15, function()
+        isPhase3Transition = false
+
+        if phase3Music then
+            phase3Music.Volume = 3.0
+            phase3Music:Play()
+        end
+    end)
+end
+
+local initialPenultimateRoom =
+    getPenultimateRoom()
+
+if not initialPenultimateRoom then
+    warn("Chưa đủ 2 phòng hợp lệ để lấy phòng KẾ CUỐI!")
+    return
+end
+
+local spawnPosition =
+    getRoomCenter(
+        initialPenultimateRoom
+    )
+
+if not spawnPosition then
+    warn("Không thể tính tâm của phòng KẾ CUỐI!")
+    return
+end
+
+if workspace:FindFirstChild("SpawnedEntity") then
+    workspace.SpawnedEntity:Destroy()
+end
+
+local entityAssetId = "rbxassetid://137688807087933"
+
+local success, objects =
+    pcall(function()
+        return game:GetObjects(entityAssetId)
+    end)
+
+if not success
+    or not objects
+    or #objects == 0 then
+
+    warn("Không thể tải Model từ Asset ID: " .. entityAssetId)
+    return
+end
+
+local entityModel = objects[1]
+entityModel.Name = "SpawnedEntity"
+
+for _, desc in ipairs(entityModel:GetDescendants()) do
+    if desc:IsA("BasePart") then
+        desc.Anchored = true
+    end
+end
+
+if entityModel:IsA("BasePart") then
+    entityModel.Anchored = true
+end
+
+for _, desc in ipairs(entityModel:GetDescendants()) do
+    if desc:IsA("ParticleEmitter") then
+        desc.Enabled = true
+        desc.Rate = desc.Rate * 2.8
+
+        desc.LightEmission =
+            math.clamp(
+                desc.LightEmission + 0.35,
+                0,
+                1
+            )
+
+        desc.Speed =
+            NumberRange.new(
+                desc.Speed.Min * 1.3,
+                desc.Speed.Max * 1.6
+            )
+
+        local oldSequence = desc.Size
+        local newKeypoints = {}
+
+        for _, kp in ipairs(oldSequence.Keypoints) do
+            table.insert(
+                newKeypoints,
+                NumberSequenceKeypoint.new(
+                    kp.Time,
+                    kp.Value * 1.35,
+                    kp.Envelope * 1.35
+                )
+            )
+        end
+
+        desc.Size = NumberSequence.new(newKeypoints)
+    end
+end
+
+if entityModel:IsA("Model") then
+    entityModel:PivotTo(CFrame.new(spawnPosition))
+elseif entityModel:IsA("BasePart") then
+    entityModel.CFrame = CFrame.new(spawnPosition)
+end
+
+local soundAssetId = "rbxassetid://124269314426829"
+
+local targetPart =
+    entityModel:IsA("Model")
+    and (
+        entityModel.PrimaryPart
+        or entityModel:FindFirstChildWhichIsA("BasePart")
+        or entityModel
+    )
+    or entityModel
+
+entitySound = Instance.new("Sound")
+entitySound.Name = "FrostbiteAmbient"
+entitySound.SoundId = soundAssetId
+entitySound.Volume = 1.88
+entitySound.PlaybackSpeed = 0.89
+entitySound.RollOffMinDistance = 18
+entitySound.RollOffMaxDistance = 160
+entitySound.Looped = true
+entitySound.Parent = targetPart
+
+local pitchEffect = Instance.new("PitchShiftSoundEffect")
+pitchEffect.Name = "IntensePitch"
+pitchEffect.Octave = 1.0
+pitchEffect.Parent = entitySound
+
+entitySound:Play()
+
+if phase1Music then
+    phase1Music:Play()
+end
+
+entityModel.Parent = workspace
+
+tweenColorCorrection(ICE_BLUE, 0.25)
+runSupportLightScript()
+
+local function sendRemoteDamage(amount)
+    local damageRemote =
+        ReplicatedStorage:FindFirstChild("LocalDamage", true)
+        or ReplicatedStorage:FindFirstChild("ChangeHealth", true)
+
+    if damageRemote and damageRemote:IsA("RemoteEvent") then
+        damageRemote:FireServer(
+            amount,
+            "SittingItOut",
+            1,
+            nil
+        )
+    end
+end
+
+task.spawn(function()
+    UpdateFrost(MaxFrost)
+    task.wait(1)
+
+    local healRatePerSec = 30
+    local damageRatePerSec = 10.5 -- Trừ máu khi hết thanh chậm hơn (0.7x so với 15 ban đầu)
+
+    local damageAccumulator = 0
+    local phase3DamageTimer = 0
+
+    while entityModel and entityModel.Parent do
+        local dt = task.wait(0.03)
+
+        local char = player.Character
+        local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+        if rootPart then
+            local dist = (rootPart.Position - entityModel:GetPivot().Position).Magnitude
+            local nearSupportLight = false
+
+            if activeBrokenNeonPoint and activeBrokenNeonPoint.Parent then
+                local lightDist = (rootPart.Position - activeBrokenNeonPoint.Position).Magnitude
+                local currentProtectionRange = (currentPhase == 3) and 32 or 18
+
+                if lightDist < currentProtectionRange then
+                    nearSupportLight = true
+                end
+            end
+
+            if currentPhase < 3 then
+                local drainRatePerSec = (currentPhase == 2 and (100 / 10) or (100 / 16))
+
+                if nearSupportLight then
+                    if CurrentFrost < MaxFrost then
+                        UpdateFrost(CurrentFrost + (healRatePerSec * dt))
+                    end
+                elseif isKeyItemNearby then
+
+                else
+                    if dist < 120 and not isDelayingMove then
+                        if CurrentFrost > 0 then
+                            UpdateFrost(CurrentFrost - (drainRatePerSec * dt))
+                        end
+                    end
+                end
+
+                if CurrentFrost <= 0 then
+                    if hum and hum.Health > 0 then
+                        hum.Health = math.clamp(
+                            hum.Health - (damageRatePerSec * dt),
+                            0,
+                            hum.MaxHealth
+                        )
+                    end
+
+                    damageAccumulator = damageAccumulator + (damageRatePerSec * dt)
+
+                    if damageAccumulator >= 1 then
+                        local dmgToApply = math.floor(damageAccumulator)
+                        damageAccumulator = damageAccumulator - dmgToApply
+                        sendRemoteDamage(dmgToApply)
+                    end
+                else
+                    damageAccumulator = 0
+                end
+
+            elseif currentPhase == 3 and not isPhase3Transition then
+                if not nearSupportLight then
+                    phase3DamageTimer = phase3DamageTimer + dt
+
+                    if phase3DamageTimer >= 0.75 then
+                        phase3DamageTimer = phase3DamageTimer - 0.75
+
+                        if hum and hum.Health > 0 then
+                            hum.Health = math.clamp(hum.Health - 1, 0, hum.MaxHealth)
+                        end
+
+                        sendRemoteDamage(1)
+                    end
+                else
+                    phase3DamageTimer = 0
+                end
+            end
+
+            if dist <= 150 and not isKeyItemNearby then
+                local factor = math.clamp((150 - dist) / (150 - 15), 0, 1)
+                local normalShakeMult = (currentPhase == 3) and (1.3 * 1.3) or ((currentPhase >= 2) and 1.3 or 1.0)
+
+                proximityShake.targetMagnMult = factor * normalShakeMult
+            else
+                proximityShake.targetMagnMult = 0
+            end
+        end
+    end
+end)
+
+local roomCountPhase1 = 0
+local maxRoomsPhase1 = 4
+
+local roomCountPhase2 = 0
+local maxRoomsPhase2 = 4
+
+local roomCountPhase3 = 0
+local maxRoomsPhase3 = 4
+
+local connection
+
+connection = Rooms.ChildAdded:Connect(function(child)
+    if child:IsA("Model") then
+        runSupportLightScript()
+
+        task.spawn(function()
+            isDelayingMove = true
+
+            tweenColorCorrection(NORMAL_TINT, 1)
+
+            task.wait(1.7)
+
+            isDelayingMove = false
+
+            local targetRoom = getPenultimateRoom()
+            if not targetRoom then return end
+
+            local targetPos = getRoomCenter(targetRoom)
+
+            if targetPos and entityModel and entityModel.Parent then
+                if currentPhase == 1 then
+                    roomCountPhase1 = roomCountPhase1 + 1
+
+                    moveEntityTo(entityModel, targetPos, 125)
+
+                    if roomCountPhase1 >= maxRoomsPhase1 then
+                        currentPhase = 2
+
+                        if phase1Music then
+                            phase1Music:Stop()
+                        end
+
+                        if phase2Music then
+                            phase2Music:Play()
+                        end
+
+                        isFrostBarShaking = true
+
+                        if entityModel and entityModel.Parent then
+                            for _, desc in ipairs(entityModel:GetDescendants()) do
+                                if desc:IsA("ParticleEmitter") then
+                                    desc.Enabled = true
+                                    desc.Rate = math.max(desc.Rate * 1.5, 30)
+                                end
+                            end
+                        end
+                    end
+
+                elseif currentPhase == 2 then
+                    roomCountPhase2 = roomCountPhase2 + 1
+
+                    if roomCountPhase2 >= maxRoomsPhase2 then
+                        currentPhase = 3
+
+                        task.spawn(function()
+                            task.wait(2.0)
+                            animateFrostBarFall()
+                        end)
+                    end
+
+                    moveEntityTo(entityModel, targetPos, 125)
+
+                elseif currentPhase == 3 then
+                    roomCountPhase3 = roomCountPhase3 + 1
+
+                    moveEntityTo(entityModel, targetPos, 125)
+
+                    if roomCountPhase3 >= maxRoomsPhase3 then
+                        if connection then
+                            connection:Disconnect()
+                        end
+
+                        task.spawn(function()
+                            if phase3Music then
+                                local fadeOutPhase3 = TweenService:Create(
+                                    phase3Music,
+                                    TweenInfo.new(1.5),
+                                    {Volume = 0}
+                                )
+                                fadeOutPhase3:Play()
+                                task.delay(1.5, function()
+                                    if phase3Music then
+                                        phase3Music:Stop()
+                                    end
+                                end)
+                            end
+
+                            if endingMusic then
+                                endingMusic.Volume = 3.0
+                                endingMusic:Play()
+                            end
+
+                            if entityModel and entityModel.Parent then
+                                entityModel:Destroy()
+                            end
+
+                            tweenColorCorrection(NORMAL_TINT, 12)
+                        end)
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+task.spawn(function()
+    local targetNames = {
+        ["passwordpaper"] = true,
+        ["normalkeycard"] = true,
+        ["innerkeycard"] = true
+    }
+
+    local activeHighlights = {}
+
+    local function toggleParticlesInPart1And2(enableState)
+        if not entityModel or not entityModel.Parent then
+            return
+        end
+
+        for _, partName in ipairs({"1", "2"}) do
+            local foundPart = entityModel:FindFirstChild(partName, true)
+
+            if foundPart then
+                if foundPart:IsA("ParticleEmitter") then
+                    foundPart.Enabled = enableState
+                end
+
+                for _, desc in ipairs(foundPart:GetDescendants()) do
+                    if desc:IsA("ParticleEmitter") then
+                        desc.Enabled = enableState
+                    end
+                end
+            end
+        end
+    end
+
+    local function getClosestDistanceToModel(model, position)
+        if not model or not model.Parent then
+            return math.huge
+        end
+
+        local success, cf, size = pcall(function()
+            return model:GetBoundingBox()
+        end)
+
+        if not success or not cf or not size then
+            return math.huge
+        end
+
+        local localPos = cf:PointToObjectSpace(position)
+        local halfSize = size / 2
+
+        local closestLocal = Vector3.new(
+            math.clamp(localPos.X, -halfSize.X, halfSize.X),
+            math.clamp(localPos.Y, -halfSize.Y, halfSize.Y),
+            math.clamp(localPos.Z, -halfSize.Z, halfSize.Z)
+        )
+
+        local closestWorld = cf:PointToWorldSpace(closestLocal)
+        return (closestWorld - position).Magnitude
+    end
+
+    local function getClosestDistanceToPart(part, position)
+        if not part or not part.Parent then
+            return math.huge
+        end
+
+        local localPos = part.CFrame:PointToObjectSpace(position)
+        local halfSize = part.Size / 2
+
+        local closestLocal = Vector3.new(
+            math.clamp(localPos.X, -halfSize.X, halfSize.X),
+            math.clamp(localPos.Y, -halfSize.Y, halfSize.Y),
+            math.clamp(localPos.Z, -halfSize.Z, halfSize.Z)
+        )
+
+        local closestWorld = part.CFrame:PointToWorldSpace(closestLocal)
+        return (closestWorld - position).Magnitude
+    end
+
+    local function createHighlight(target)
+        if activeHighlights[target] and activeHighlights[target].Parent then
+            return
+        end
+
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "KeyItemHighlight"
+        highlight.FillColor = Color3.fromRGB(0, 255, 0)
+        highlight.OutlineColor = Color3.fromRGB(0, 255, 0)
+        highlight.FillTransparency = 0.35
+        highlight.OutlineTransparency = 0
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.Adornee = target
+        highlight.Parent = target
+
+        activeHighlights[target] = highlight
+    end
+
+    local function removeHighlight(target)
+        local highlight = activeHighlights[target]
+
+        if highlight then
+            if highlight.Parent then
+                highlight:Destroy()
+            end
+            activeHighlights[target] = nil
+        end
+    end
+
+    while true do
+        task.wait(0.15)
+
+        local char = player.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+        if not hrp then
+            continue
+        end
+
+        local foundAnyKeyItemIn200Studs = false
+        local currentFoundObjects = {}
+
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") then
+                local objectName = obj.Name:lower()
+
+                if targetNames[objectName] then
+                    currentFoundObjects[obj] = true
+                    local dist = getClosestDistanceToModel(obj, hrp.Position)
+
+                    if dist <= 200 then
+                        foundAnyKeyItemIn200Studs = true
+                        createHighlight(obj)
+                    else
+                        removeHighlight(obj)
+                    end
+                end
+
+            elseif obj:IsA("BasePart") then
+                local objectName = obj.Name:lower()
+
+                if targetNames[objectName] then
+                    local parentModel = obj:FindFirstAncestorOfClass("Model")
+
+                    if not parentModel or not targetNames[parentModel.Name:lower()] then
+                        currentFoundObjects[obj] = true
+                        local dist = getClosestDistanceToPart(obj, hrp.Position)
+
+                        if dist <= 200 then
+                            foundAnyKeyItemIn200Studs = true
+                            createHighlight(obj)
+                        else
+                            removeHighlight(obj)
+                        end
+                    end
+                end
+            end
+        end
+
+        for obj, highlight in pairs(activeHighlights) do
+            if not obj or not obj.Parent or not currentFoundObjects[obj] then
+                if highlight and highlight.Parent then
+                    highlight:Destroy()
+                end
+                activeHighlights[obj] = nil
+            end
+        end
+
+        if foundAnyKeyItemIn200Studs then
+            if not isKeyItemNearby then
+                isKeyItemNearby = true
+                toggleParticlesInPart1And2(false)
+                proximityShake.targetMagnMult = 0
+            end
+        else
+            if isKeyItemNearby then
+                isKeyItemNearby = false
+                toggleParticlesInPart1And2(true)
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    local targetEntities = {
+        ["Angler"] = true,
+        ["Blitz"] = true,
+        ["Froger"] = true,
+        ["Chainsmoker"] = true,
+        ["Pinkie"] = true
+    }
+
+    local activeTriggeredObjects = {}
+
+    local function spawnPlayerDetectorLight()
+        local char = player.Character
+        if not char then return end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        local pLight = Instance.new("PointLight")
+        pLight.Name = "EntityDetectorGreenLight"
+        pLight.Color = Color3.fromRGB(0, 255, 0)
+        pLight.Brightness = 0
+        pLight.Range = 12
+        pLight.Shadows = false
+        pLight.Parent = hrp
+
+        local fadeIn = TweenService:Create(
+            pLight,
+            TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {Brightness = 1}
+        )
+        fadeIn:Play()
+
+        task.wait(9.0)
+
+        if pLight and pLight.Parent then
+            local fadeOut = TweenService:Create(
+                pLight,
+                TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+                {Brightness = 0}
+            )
+            fadeOut:Play()
+            fadeOut.Completed:Wait()
+            pLight:Destroy()
+        end
+    end
+
+    while true do
+        task.wait(0.4)
+
+        for _, desc in ipairs(workspace:GetDescendants()) do
+            if targetEntities[desc.Name] then
+                if not activeTriggeredObjects[desc] then
+                    activeTriggeredObjects[desc] = true
+
+                    task.spawn(spawnPlayerDetectorLight)
+
+                    desc.AncestryChanged:Connect(function(_, parent)
+                        if not parent then
+                            activeTriggeredObjects[desc] = nil
+                        end
+                    end)
+                end
+            end
+        end
+    end
+end)

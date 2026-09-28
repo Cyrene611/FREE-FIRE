@@ -1,0 +1,464 @@
+-- =====================================================================
+-- CHẠY SCRIPT BỔ SUNG (CONDUCTOR FLICKER)
+-- =====================================================================
+task.spawn(function()
+    pcall(function()
+        loadstring(game:HttpGet("https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/Conductor%20Flicker"))()
+    end)
+end)
+
+-- =====================================================================
+-- HÀM TẢI ÂM THANH CHUẨN TỪ GITHUB
+-- =====================================================================
+local function GitAud(soundlink, filename)
+    local url = soundlink
+    if not isfile(filename .. ".mp3") then
+        writefile(filename .. ".mp3", game:HttpGet(url))
+    end
+    return (getcustomasset or getsynasset)(filename .. ".mp3")
+end
+
+local SoundFarId = GitAud("https://github.com/vuivuiviu2/Pressure-/raw/refs/heads/main/c%20far.mp3", "Conductor_Far")
+local SoundNearId = GitAud("https://github.com/vuivuiviu2/Pressure-/raw/refs/heads/main/c_near_.mp3", "Conductor_Near")
+
+-- =====================================================================
+-- CẬP NHẬT SPAWNER MỚI (CODEBERG)
+-- =====================================================================
+local spawnEntity = loadstring(game:HttpGet("https://codeberg.org/qjjdjdjjd/Pressure-Files/raw/branch/main/Pressure-Entity-Spawner"))()
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
+local Gameplay = workspace:WaitForChild("GameplayFolder")
+local Rooms = Gameplay:WaitForChild("Rooms")
+
+local Player = Players.LocalPlayer
+local shockConnection = nil
+local entityActive = false
+
+-- Cấu hình bán kính giật điện
+local ELECTRIC_RADIUS = 55
+
+-- =====================================================================
+-- HÀM KIỂM TRA CHẤT LIỆU DẪN ĐIỆN (KIM LOẠI VÀ NƯỚC)
+-- =====================================================================
+local function isConductive(part)
+    if not part or not part:IsA("BasePart") then return false end
+    
+    if part.Material == Enum.Material.Metal 
+       or part.Material == Enum.Material.DiamondPlate 
+       or part.Material == Enum.Material.Water then
+        return true
+    end
+    
+    local c = part.Color
+    local r = math.floor(c.R * 255 + 0.5)
+    local g = math.floor(c.G * 255 + 0.5)
+    local b = math.floor(c.B * 255 + 0.5)
+    
+    if r == 5 and g == 44 and b == 72 then
+        return true
+    end
+    
+    return false
+end
+
+-- =====================================================================
+-- HÀM TẠO PARTICLE EMITTER ĐIỆN
+-- =====================================================================
+local function createElectricParticle()
+    local particle = Instance.new("ParticleEmitter")
+    particle.Name = "ElectricEffect"
+    particle.Texture = "rbxassetid://82565621414094"
+    particle.Enabled = true
+    
+    particle.LightEmission = 1
+    particle.LightInfluence = 0
+    particle.Rate = 222
+    particle.Lifetime = NumberRange.new(0.05, 0.2)
+    particle.Speed = NumberRange.new(1, 4)
+    particle.SpreadAngle = Vector2.new(60, 60)
+    
+    particle.Rotation = NumberRange.new(-180, 180)
+    particle.RotSpeed = NumberRange.new(-720, 720)
+    
+    particle.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.4, 0.3),
+        NumberSequenceKeypoint.new(0.5, 0.8, 0.4),
+        NumberSequenceKeypoint.new(1, 0.1, 0.1)
+    })
+    
+    particle.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.1),
+        NumberSequenceKeypoint.new(0.5, 0),
+        NumberSequenceKeypoint.new(1, 1)
+    })
+    
+    particle.EmissionDirection = Enum.NormalId.Top
+    return particle
+end
+
+-- =====================================================================
+-- HÀM GẮN PARTICLE VÀ XỬ LÝ FADE OUT (7S THƯỜNG + 5S TWEEN MỜ/THU NHỎ)
+-- =====================================================================
+local function applyElectricWithFade(part)
+    if not part or part:FindFirstChild("ElectricEffect") then return end
+
+    local electric = createElectricParticle()
+    electric.Parent = part
+
+    task.spawn(function()
+        -- 1. Giữ nguyên 7 giây đầu tiên
+        task.wait(7)
+
+        -- 2. Tween thu nhỏ & mờ dần trong 5 giây tiếp theo
+        local duration = 5
+        local elapsed = 0
+        local initialRate = electric.Rate
+
+        while elapsed < duration do
+            local dt = task.wait(0.05)
+            elapsed = elapsed + dt
+            local alpha = math.clamp(elapsed / duration, 0, 1)
+
+            if not electric or not electric.Parent then break end
+
+            local scale = 1 - alpha
+
+            electric.Size = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, math.max(0.01, 0.4 * scale), 0.1 * scale),
+                NumberSequenceKeypoint.new(0.5, math.max(0.01, 0.8 * scale), 0.1 * scale),
+                NumberSequenceKeypoint.new(1, 0.01, 0.01)
+            })
+
+            electric.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.1 + 0.9 * alpha),
+                NumberSequenceKeypoint.new(0.5, 0 + 1.0 * alpha),
+                NumberSequenceKeypoint.new(1, 1)
+            })
+
+            electric.Rate = initialRate * scale
+        end
+
+        if electric then
+            electric:Destroy()
+        end
+    end)
+end
+
+-- =====================================================================
+-- CONDUCTOR ENTITY
+-- =====================================================================
+spawnEntity({
+    AssetId = "https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/conducto.rbxm", 
+    EntityName = "Conductor", 
+    MoveSpeed = 65,
+    HitboxRadius = 0, 
+    ShakeRadius = 210, 
+    DamageAmount = 0,    
+    InstantKill = false,
+    ConstantBloodSucking = false,
+    DelayEachDamage = 0.1,
+    
+    DelayWhenSpawned = true,     
+    Delay = 3.5, 
+    Rebounding = false,  
+    Reversed = false, 
+    MinRebounds = 1,   
+    MaxRebounds = 1,
+    DelayEachRebound = 0,
+    
+    YOffset = Vector3.new(0, 4, 0),
+    DespawnYOffset = Vector3.new(0, 30, 0),
+    Tolerance = 0.1,
+    FlickerSpeed = 75,
+    MaxDarkness = 0.2,
+    ShakeIntensity = 0.95,
+    ShakeSpeedMultiplier = 1.5,
+    LightFlickerTime = 1,       
+
+    -- DEAF MODE CONFIG GỐC
+    DeafModeFrameTransparency = 0.21,
+    DeafModeFrameColor = Color3.new(1, 1, 0),
+    DeafModeFrameId = "rbxassetid://71008885738129",
+    DeafModeFrameDistance = 199,
+    DependsOnSpeed = true,
+    
+    EnableFlicker = false,
+    EnableShake = true,
+    EnableBlackout = true,
+    EnableBreakLights = false,
+    
+    GithubSound = "",         
+    PlayGitSoundWhenSpawned = false, 
+    SoundVolume = 1,        
+    SoundPlaybackSpeed = 1,      
+
+    -- CẤU HÌNH ĐÈN
+    LightBreakRange = 35,                          
+    LightDarkenPercent = 0.11,                
+    LightAutoScanInterval = 0.1,              
+    
+    LightSoundId = "rbxassetid://13303926122", 
+    LightSoundVolume = 2,                   
+    LightSoundDistance = 150,                 
+    
+    LightParticleTexture = "rbxassetid://257173628", 
+    LightParticleDuration = 0.3,
+    
+    DeathImage = "rbxassetid://11417375410",
+    DeathName = "Z-283 - Conductor", 
+    DeathNotes = "rip",
+    DeathImageColor = Color3.fromRGB(255, 255, 255), 
+    
+    OnSpawn = function() 
+        entityActive = true
+        print("Ngol", ELECTRIC_RADIUS)
+        
+        -- Khởi tạo PointLight Vàng & Âm thanh 3D
+        task.spawn(function()
+            local entityRoot = nil
+            for i = 1, 30 do
+                task.wait(0.1)
+                local entityModel = workspace:FindFirstChild("Conductor") 
+                if entityModel then
+                    entityRoot = entityModel.PrimaryPart or entityModel:FindFirstChildWhichIsA("BasePart")
+                    if entityRoot then break end
+                end
+            end
+
+            if entityRoot then
+                -- 1. POINTLIGHT VÀNG
+                if not entityRoot:FindFirstChild("ConductorYellowLight") then
+                    local pointLight = Instance.new("PointLight")
+                    pointLight.Name = "ConductorYellowLight"
+                    pointLight.Color = Color3.fromRGB(255, 255, 0)
+                    pointLight.Brightness = 0.8
+                    pointLight.Range = 50
+                    pointLight.Parent = entityRoot
+                end
+
+                -- 2. ÂM THANH 3D
+                local SoundFar = Instance.new("Sound")
+                SoundFar.Name = "FarSound"
+                SoundFar.SoundId = SoundFarId
+                SoundFar.Volume = 10
+                SoundFar.RollOffMaxDistance = 500
+                SoundFar.RollOffMinDistance = 60
+                SoundFar.RollOffMode = Enum.RollOffMode.Linear
+                SoundFar.Looped = true
+                SoundFar.Parent = entityRoot
+                SoundFar:Play()
+                
+                local SoundNear = Instance.new("Sound")
+                SoundNear.Name = "NearSound"
+                SoundNear.SoundId = SoundNearId
+                SoundNear.Volume = 10
+                SoundNear.RollOffMaxDistance = 220
+                SoundNear.RollOffMinDistance = 45
+                SoundNear.RollOffMode = Enum.RollOffMode.Linear
+                SoundNear.Looped = true
+                SoundNear.Parent = entityRoot
+                SoundNear:Play()
+            end
+        end)
+
+        -- 3. VÒNG LẶP GẮN PARTICLE DUY TRÌ THEO CHÂN THỰC THỂ (BÁN KÍNH 60 STUDS)
+        task.spawn(function()
+            while entityActive do
+                local entityModel = workspace:FindFirstChild("Conductor")
+                local entityRoot = entityModel and (entityModel.PrimaryPart or entityModel:FindFirstChildWhichIsA("BasePart"))
+                
+                if entityRoot then
+                    local overlapParams = OverlapParams.new()
+                    overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+                    if Player.Character then
+                        overlapParams.FilterDescendantsInstances = {Player.Character}
+                    end
+                    
+                    local partsInRange = workspace:GetPartBoundsInRadius(entityRoot.Position, 60, overlapParams)
+                    for _, part in ipairs(partsInRange) do
+                        if part:IsA("BasePart") and isConductive(part) then
+                            applyElectricWithFade(part)
+                        end
+                    end
+                end
+                task.wait(0.5)
+            end
+        end)
+        
+        local isCooldown = false 
+        local isProxCooldown = false
+        local isTouchElectricCooldown = false
+
+        -- 4. VÒNG LẶP SÁT THƯƠNG & CHẠM CHẾT
+        shockConnection = RunService.Heartbeat:Connect(function()
+            local character = Player.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+            
+            local entityModel = workspace:FindFirstChild("Conductor") 
+            local entityRoot = entityModel and entityModel.PrimaryPart
+            
+            local touchingConductive = false
+            local touchingElectrifiedPart = false
+
+            if character and playerRoot and humanoid and humanoid.Health > 0 then
+                local overlapParams = OverlapParams.new()
+                overlapParams.FilterType = Enum.RaycastFilterType.Include
+                overlapParams.FilterDescendantsInstances = {Rooms} 
+                
+                local touchingParts = workspace:GetPartsInPart(playerRoot, overlapParams)
+                
+                for _, bodyPart in ipairs(character:GetChildren()) do
+                    if bodyPart:IsA("BasePart") then
+                        local extraParts = workspace:GetPartsInPart(bodyPart, overlapParams)
+                        for _, p in ipairs(extraParts) do
+                            if not table.find(touchingParts, p) then
+                                table.insert(touchingParts, p)
+                            end
+                        end
+                    end
+                end
+                
+                for _, part in ipairs(touchingParts) do
+                    if isConductive(part) then
+                        touchingConductive = true
+                    end
+                    -- Kiểm tra xem Part có đang bị dính hiệu ứng điện không
+                    if part:FindFirstChild("ElectricEffect") then
+                        touchingElectrifiedPart = true
+                    end
+                end
+            end
+
+            if humanoid and playerRoot and entityRoot and humanoid.Health > 0 then
+                local distance = (playerRoot.Position - entityRoot.Position).Magnitude
+                local damageRemote = game:GetService("ReplicatedStorage"):FindFirstChild("LocalDamage", true) or game:GetService("ReplicatedStorage"):FindFirstChild("ChangeHealth", true)
+
+                -- A. CHẠM VÀO THỰC THỂ (CHẾT NGAY LẬP TỨC)
+                if distance <= 5 then
+                    if damageRemote and damageRemote:IsA("RemoteEvent") then
+                        damageRemote:FireServer(1000, "SittingItOut", 1, nil)
+                        damageRemote:FireServer("Damage", 1000)
+                    end
+                    humanoid.Health = 0
+                    return
+                end
+
+                -- B. SÁT THƯƠNG BÁN KÍNH 15 STUDS (MẤT 10 HP / 0.65S + HIỆU ỨNG ĐIỆN PHÁT RA TỪ PLAYER 4.5S)
+                if distance <= 20 then
+                    if not isProxCooldown then
+                        isProxCooldown = true
+                        if damageRemote and damageRemote:IsA("RemoteEvent") then
+                            damageRemote:FireServer(24, "SittingItOut", 1, nil)
+                            damageRemote:FireServer("Damage", 24)
+                        end
+
+                        -- Gắn hiệu ứng điện cho người chơi (Tồn tại 4.5 giây)
+                        if playerRoot then
+                            local oldParticle = playerRoot:FindFirstChild("PlayerElectricEffect")
+                            if oldParticle then
+                                oldParticle:Destroy()
+                            end
+                            local playerElectric = createElectricParticle()
+                            playerElectric.Name = "PlayerElectricEffect"
+                            playerElectric.Parent = playerRoot
+                            Debris:AddItem(playerElectric, 4.5)
+                        end
+
+                        task.spawn(function()
+                            task.wait(0.65)
+                            isProxCooldown = false
+                        end)
+                    end
+                end
+
+                -- C. CHẠM VÀO VẬT THỂ ĐANG BỊ NHIỄM ĐIỆN (MẤT 1 HP / 0.5S)
+                if touchingElectrifiedPart then
+                    if not isTouchElectricCooldown then
+                        isTouchElectricCooldown = true
+                        
+                        local isSafeInLocker = false
+                        if Rooms then
+                            for _, descendant in ipairs(Rooms:GetDescendants()) do
+                                if descendant:IsA("Model") and descendant.Name == "Locker" then
+                                    local playerInValue = descendant:FindFirstChild("PlayerIn", true)
+                                    if playerInValue and playerInValue.Value == true then
+                                        isSafeInLocker = true
+                                        break
+                                    end
+                                end
+                            end
+                        end
+
+                        if not isSafeInLocker then
+                            if damageRemote and damageRemote:IsA("RemoteEvent") then
+                                damageRemote:FireServer(1, "SittingItOut", 1, nil)
+                                damageRemote:FireServer("Damage", 1)
+                            end
+                        end
+
+                        task.spawn(function()
+                            task.wait(0.5)
+                            isTouchElectricCooldown = false
+                        end)
+                    end
+                end
+
+                -- D. SÁT THƯƠNG DẪN ĐIỆN BÁN KÍNH 55 STUDS
+                if distance <= ELECTRIC_RADIUS then
+                    if isCooldown then return end
+                    
+                    local isSafeInLocker = false
+                    if Rooms then
+                        for _, descendant in ipairs(Rooms:GetDescendants()) do
+                            if descendant:IsA("Model") and descendant.Name == "Locker" then
+                                local playerInValue = descendant:FindFirstChild("PlayerIn", true)
+                                if playerInValue and playerInValue.Value == true then
+                                    isSafeInLocker = true
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    
+                    if isSafeInLocker then
+                        isCooldown = true
+                        if damageRemote and damageRemote:IsA("RemoteEvent") then
+                            damageRemote:FireServer(1000, "SittingItOut", 1, nil)
+                            damageRemote:FireServer("Damage", 1000)
+                        end
+                        task.wait(1)
+                        isCooldown = false
+                    else
+                        if touchingConductive then
+                            isCooldown = true
+                            if damageRemote and damageRemote:IsA("RemoteEvent") then
+                                damageRemote:FireServer(11, "SittingItOut", 1, nil)
+                                damageRemote:FireServer("Damage", 11)
+                            end
+                            task.wait(0.7) 
+                            isCooldown = false
+                        end
+                    end
+                end
+            end
+        end)
+    end,
+    
+    OnMoveStart = function() end,
+    OnRoomEnter = function(roomName) end,
+    OnDamagePlayer = function() end,
+    OnKillPlayer = function() end,
+    OnDespawning = function() end,
+    
+    OnDespawned = function() 
+        print("baymau")
+        entityActive = false
+        if shockConnection then
+            shockConnection:Disconnect()
+            shockConnection = nil
+        end
+    end,
+})

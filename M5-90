@@ -1,0 +1,500 @@
+local Players = game:GetService("Players")
+local SoundService = game:GetService("SoundService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+
+local REACTION_TIME = 0.142
+
+local LP = Players.LocalPlayer
+local PlayerGui = LP:WaitForChild("PlayerGui")
+
+-- 1. TẠO HOẶC LẤY SCREENGUI ĐẢM BẢO HIỂN THỊ TRÊN CÙNG (GỐC SCRIPT 2)
+local ScreenGui = PlayerGui:FindFirstChild("A90_JumpscareGui") or Instance.new("ScreenGui")
+ScreenGui.Name = "A90_JumpscareGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.DisplayOrder = 9999
+ScreenGui.Enabled = true
+ScreenGui.Parent = PlayerGui
+
+local URL = "https://github.com/jjcncnkdkslslwplfkkfncjs/lcjjskjjcjjdjajahjallsjxjxjsjjjdx/raw/refs/heads/main/Place_6839171747_Frame_JumpscareBlsdxd_1788600896.txt"
+local FileName = "JumpscareBlsdxd.rbxm"
+
+if not isfile(FileName) then
+	writefile(FileName, game:HttpGet(URL))
+end
+
+local obj = game:GetObjects(getcustomasset(FileName))[1]
+if not obj then 
+	warn("Failed to load Jumpscare GUI from file") 
+	return 
+end
+
+obj.Parent = ScreenGui
+
+function GitAud(soundgit, filename, extension, parent) 
+	extension = extension or "mp3" 
+	local Path = filename .. "." .. extension 
+	if not isfile(Path) then 
+		writefile(Path, game:HttpGet(soundgit)) 
+	end 
+	local Sound = Instance.new("Sound") 
+	Sound.Name = filename 
+	Sound.SoundId = getcustomasset(Path) 
+	Sound.Parent = parent 
+	return Sound 
+end
+
+local Jumpscare = obj
+local UI = Jumpscare:FindFirstChild("Jumpscare_A90") or Jumpscare
+
+-- ASSET IDs
+local FACE_ID = "rbxassetid://103853117931352"
+local FACE_ANGRY_ID = "rbxassetid://89973675821933"
+local FACE_DODGE_ID = "rbxassetid://133463861194216"
+local STATIC_ID = "rbxassetid://78127262122503"
+local BLOOD_ID = "rbxassetid://92935170734676"
+local STOP_ICON_ID = "rbxassetid://131067554194363"
+
+-- TÌM HOẶC TỰ ĐỘNG TẠO STOP ICON NẾU FILE KHÔNG CÓ (GỐC SCRIPT 2)
+local function getOrCreateStopIcon()
+	local found = UI:FindFirstChild("StopIcon", true)
+	if not found then
+		found = Instance.new("ImageLabel")
+		found.Name = "StopIcon"
+		found.BackgroundTransparency = 1
+		found.Size = UDim2.new(0, 350, 0, 350)
+		found.AnchorPoint = Vector2.new(0.5, 0.5)
+		found.Position = UDim2.new(0.5, 0, 0.5, 0)
+		found.ZIndex = 1000
+		found.Parent = UI
+	end
+	found.Image = STOP_ICON_ID
+	return found
+end
+
+local stopIconObj = getOrCreateStopIcon()
+
+if UI:FindFirstChild("Face") then UI.Face.Image = FACE_ID end
+if UI:FindFirstChild("FaceAngry") then UI.FaceAngry.Image = FACE_ANGRY_ID end
+
+--------------------------------------------------------------------------------
+-- HIỆU ỨNG BỊ CẮN (BLOOD + SHAKE) (GỐC SCRIPT 2)
+--------------------------------------------------------------------------------
+local function playBiteEffect(duration)
+	duration = duration or 15
+
+	local cc = Lighting:FindFirstChild("BiteColorCorrection") or Instance.new("ColorCorrectionEffect")
+	cc.Name = "BiteColorCorrection"
+	cc.TintColor = Color3.fromRGB(255, 30, 30)
+	cc.Saturation = 0.5
+	cc.Contrast = 0.4
+	cc.Parent = Lighting
+
+	local bloodGui = PlayerGui:FindFirstChild("BloodEffectGui") or Instance.new("ScreenGui")
+	bloodGui.Name = "BloodEffectGui"
+	bloodGui.ResetOnSpawn = false
+	bloodGui.IgnoreGuiInset = true
+	bloodGui.DisplayOrder = 9998
+	bloodGui.Parent = PlayerGui
+
+	local bloodImg = bloodGui:FindFirstChild("BloodImg") or Instance.new("ImageLabel")
+	bloodImg.Name = "BloodImg"
+	bloodImg.AnchorPoint = Vector2.new(0.5, 0.5)
+	bloodImg.Position = UDim2.new(0.5, 0, 0.5, 0)
+	bloodImg.Size = UDim2.new(1, 0, 1, 0)
+	bloodImg.ScaleType = Enum.ScaleType.Stretch
+	bloodImg.BackgroundTransparency = 1
+	bloodImg.Image = BLOOD_ID
+	bloodImg.ImageTransparency = 0.1
+	bloodImg.Parent = bloodGui
+
+	local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+	TweenService:Create(cc, tweenInfo, {
+		TintColor = Color3.fromRGB(255, 255, 255),
+		Saturation = 0,
+		Contrast = 0
+	}):Play()
+
+	TweenService:Create(bloodImg, tweenInfo, {
+		ImageTransparency = 1
+	}):Play()
+
+	task.spawn(function()
+		local Camera = workspace.CurrentCamera
+		local startTime = os.clock()
+		local maxRotShake = 3.2
+		local maxPosShake = 0.7
+
+		local connection
+		connection = RunService.RenderStepped:Connect(function()
+			local elapsed = os.clock() - startTime
+			if elapsed >= duration then
+				if connection then connection:Disconnect() end
+				if cc then cc:Destroy() end
+				if bloodGui then bloodGui:Destroy() end
+				return
+			end
+
+			local progress = elapsed / duration
+			local intensity = (1 - progress) ^ 2.5
+
+			local rx = math.rad((math.random() * 2 - 1) * maxRotShake * intensity)
+			local ry = math.rad((math.random() * 2 - 1) * maxRotShake * intensity)
+			local rz = math.rad((math.random() * 2 - 1) * maxRotShake * intensity)
+
+			local px = (math.random() * 2 - 1) * maxPosShake * intensity
+			local py = (math.random() * 2 - 1) * maxPosShake * intensity
+
+			Camera.CFrame = Camera.CFrame * CFrame.Angles(rx, ry, rz) * CFrame.new(px, py, 0)
+		end)
+	end)
+end
+
+local function setupStatic(staticObj)
+	if staticObj and staticObj:IsA("GuiObject") then
+		staticObj.AnchorPoint = Vector2.new(0.5, 0.5)
+		staticObj.Size = UDim2.new(1.2, 0, 1.2, 0)
+		staticObj.Position = UDim2.new(0.5, 0, 0.5, 0)
+		if staticObj:IsA("ImageLabel") or staticObj:IsA("ImageButton") then
+			staticObj.Image = STATIC_ID
+		end
+	end
+end
+
+if UI:FindFirstChild("Static") then setupStatic(UI.Static) end
+if UI:FindFirstChild("Static2") then setupStatic(UI.Static2) end
+
+local function animateStatic()
+	if UI:FindFirstChild("Static") and UI.Static.Visible then
+		UI.Static.Position = UDim2.new(0.5, math.random(-30, 30), 0.5, math.random(-30, 30))
+		UI.Static.Rotation = math.random(0, 1) * 180
+	end
+	if UI:FindFirstChild("Static2") and UI.Static2.Visible then
+		UI.Static2.Position = UDim2.new(0.5, math.random(-30, 30), 0.5, math.random(-30, 30))
+		UI.Static2.Rotation = math.random(0, 1) * 180
+	end
+end
+
+local function createGlitch(targetImage, numSlices)
+	if not targetImage or not targetImage:IsA("ImageLabel") then return nil end
+	
+	local oldContainer = targetImage:FindFirstChild("GlitchContainer")
+	if oldContainer then oldContainer:Destroy() end
+
+	local container = Instance.new("Frame")
+	container.Name = "GlitchContainer"
+	container.BackgroundTransparency = 1
+	container.Size = UDim2.new(1, 0, 1, 0)
+	container.Position = UDim2.new(0, 0, 0, 0)
+	container.ZIndex = targetImage.ZIndex + 2
+	container.Parent = targetImage
+
+	local slices = {}
+	for i = 1, numSlices do
+		local slice = Instance.new("Frame")
+		slice.Name = "Slice_" .. i
+		slice.BackgroundTransparency = 1
+		slice.ClipsDescendants = true
+		slice.Size = UDim2.new(1, 0, 1 / numSlices, 0)
+		slice.Position = UDim2.new(0, 0, (i - 1) / numSlices, 0)
+		slice.ZIndex = container.ZIndex
+		slice.Parent = container
+
+		local img = Instance.new("ImageLabel")
+		img.Name = "SliceImg"
+		img.BackgroundTransparency = 1
+		img.Image = targetImage.Image
+		img.ImageColor3 = targetImage.ImageColor3
+		img.ScaleType = targetImage.ScaleType
+		img.Size = UDim2.new(1, 0, numSlices, 0)
+		img.Position = UDim2.new(0, 0, -(i - 1), 0)
+		img.ZIndex = slice.ZIndex
+		img.Parent = slice
+
+		table.insert(slices, {Slice = slice, Img = img, BaseY = (i - 1) / numSlices})
+	end
+
+	targetImage.ImageTransparency = 1
+
+	return {
+		Update = function(maxOffset)
+			targetImage.ImageTransparency = 1
+			for _, item in ipairs(slices) do
+				item.Img.Image = targetImage.Image
+				item.Img.ImageColor3 = targetImage.ImageColor3
+				if math.random(1, 3) ~= 1 then
+					local offset = math.random(-maxOffset, maxOffset)
+					item.Slice.Position = UDim2.new(0, offset, item.BaseY, 0)
+				else
+					item.Slice.Position = UDim2.new(0, 0, item.BaseY, 0)
+				end
+			end
+		end,
+		Stop = function()
+			container:Destroy()
+			targetImage.ImageTransparency = 0
+		end
+	}
+end
+
+local SpawnSound = GitAud("https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/A-90%20spawn.mp3", "A90SpawnAudio", "mp3", UI)
+local HitSound = GitAud("https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/90%20Jumpscare%20.mp3", "A90JumpscareAudio", "mp3", UI)
+
+if SpawnSound then 
+	SpawnSound.Volume = 1.2 
+	SpawnSound.Parent = UI
+end
+if HitSound then 
+	HitSound.Volume = 1.5 
+	HitSound.Parent = UI
+end
+
+local Busy = false
+local function GetCharacter() 
+	local Character = LP.Character or LP.CharacterAdded:Wait() 
+	local Humanoid = Character:FindFirstChildOfClass("Humanoid") 
+	return Character, Humanoid 
+end
+
+local function A90() 
+	if Busy then return end 
+	local Character, Humanoid = GetCharacter() 
+	if not Humanoid or Humanoid.Health <= 0 then return end 
+	
+	Busy = true 
+	local Success, Error = pcall(function() 
+		UI.BackgroundTransparency = 1 
+		if UI:FindFirstChild("Face") then
+			UI.Face.Visible = true 
+			UI.Face.Image = FACE_ID
+		end
+		if UI:FindFirstChild("FaceAngry") then UI.FaceAngry.Visible = false end
+		
+		if UI:FindFirstChild("Static") then UI.Static.Visible = false end
+		if UI:FindFirstChild("Static2") then UI.Static2.Visible = false end
+		
+		stopIconObj.Visible = false
+
+		local MainSound = SoundService:FindFirstChild("Main") 
+		local OldVolume 
+		if MainSound and MainSound:IsA("Sound") then 
+			OldVolume = MainSound.Volume 
+			MainSound.Volume = 0 
+		end 
+
+		if UI:FindFirstChild("Face") then
+			UI.Face.ImageColor3 = Color3.new(0, 0, 0) 
+			UI.Face.Position = UDim2.new(math.random(10, 90) / 100, 0, math.random(10, 90) / 100, 0) 
+		end
+		
+		UI.Visible = true 
+
+		local faceGlitch = createGlitch(UI:FindFirstChild("Face"), 35)
+		local Moved = false 
+		local Running = true 
+
+		if SpawnSound and SpawnSound:IsA("Sound") then SpawnSound:Play() end 
+
+		local faceRenderConn
+		faceRenderConn = RunService.RenderStepped:Connect(function()
+			if Running and faceGlitch then
+				faceGlitch.Update(8)
+				animateStatic()
+			else
+				if faceRenderConn then faceRenderConn:Disconnect() end
+			end
+		end)
+
+		task.wait(0.033) 
+		if UI:FindFirstChild("Face") then UI.Face.ImageColor3 = Color3.new(1, 1, 1) end
+		task.wait(0.48) 
+
+		-- BẮT ĐẦU HIỆN STOP ICON GIỮA MÀN HÌNH (GỐC SCRIPT 2)
+		UI.BackgroundTransparency = 1 
+		if UI:FindFirstChild("Face") then UI.Face.Position = UDim2.new(0.5, 0, 0.49, 0) end
+		
+		if UI:FindFirstChild("Static") then UI.Static.Visible = true; UI.Static.ImageTransparency = 0.8 end
+		if UI:FindFirstChild("Static2") then UI.Static2.Visible = true; UI.Static2.ImageTransparency = 0.8 end
+
+		task.wait(0.033) 
+		
+		-- ÉP STOP ICON HIỂN THỊ CHÍNH XÁC (GỐC SCRIPT 2)
+		stopIconObj.Visible = true 
+		stopIconObj.ImageTransparency = 0
+		stopIconObj.ZIndex = 1000
+		stopIconObj.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+		UI.BackgroundColor3 = Color3.new(0, 0, 0) 
+
+		task.wait(REACTION_TIME) 
+
+		local Camera = workspace.CurrentCamera 
+		local StartLook = Camera.CFrame.LookVector 
+		
+		task.spawn(function() 
+			task.delay(0.35, function()
+				stopIconObj.Visible = false
+			end)
+
+			while Running do 
+				task.wait(0.033) 
+				animateStatic()
+				if UI:FindFirstChild("Face") then
+					UI.Face.Position = UDim2.new(0.5, 0, 0.49, math.random(-1, 1)) 
+				end
+				
+				local Stunned = LP:GetAttribute("Stunned") == true 
+				local InCutscene = LP:GetAttribute("InCutscene") == true 
+				local Invincibility = LP:GetAttribute("Invincibility") == true 
+				if not Moved and not Stunned and not InCutscene and not Invincibility then 
+					if (StartLook - Camera.CFrame.LookVector).Magnitude > 0.4 then Moved = true end 
+					if Humanoid.MoveDirection.Magnitude > 0.4 then Moved = true end 
+				end 
+			end 
+		end) 
+
+		task.wait(0.40) 
+		UI.BackgroundColor3 = Color3.new(0, 0, 0) 
+		UI.BackgroundTransparency = 0 
+		if UI:FindFirstChild("Static") then UI.Static.ImageTransparency = 0 end
+		if UI:FindFirstChild("Static2") then UI.Static2.ImageTransparency = 0.5 end
+		task.wait(0.033) 
+		if UI:FindFirstChild("Face") then UI.Face.ImageColor3 = Color3.new(1, 0, 0) end
+		task.wait(0.033) 
+
+		Running = false
+		if faceRenderConn then faceRenderConn:Disconnect() end
+		if faceGlitch then faceGlitch.Stop() end
+		UI.Visible = false 
+		task.wait(0.08) 
+
+		local Stunned = LP:GetAttribute("Stunned") == true 
+		local InCutscene = LP:GetAttribute("InCutscene") == true 
+		local Invincibility = LP:GetAttribute("Invincibility") == true 
+
+		if Moved and not Stunned and not InCutscene and not Invincibility then 
+			-- BỊ BẮT / JUMPSCARE
+			UI.Visible = true 
+			if HitSound and HitSound:IsA("Sound") then HitSound:Play() end 
+			task.wait(0.033) 
+			if UI:FindFirstChild("Face") then UI.Face.ImageColor3 = Color3.new(1, 1, 1) end
+			task.wait(0.033) 
+			UI.BackgroundTransparency = 0 
+
+			if UI:FindFirstChild("Static") then UI.Static.Visible = true; UI.Static.ImageTransparency = 0 end
+			if UI:FindFirstChild("Static2") then UI.Static2.Visible = true; UI.Static2.ImageTransparency = 0.5 end
+
+			if UI:FindFirstChild("FaceAngry") then
+				UI.FaceAngry.ImageColor3 = Color3.new(1, 0, 0) 
+				UI.FaceAngry.Visible = true 
+			end
+			if UI:FindFirstChild("Face") then UI.Face.Visible = false end
+
+			local angryGlitch = createGlitch(UI:FindFirstChild("FaceAngry"), 25)
+
+			task.wait(0.066) 
+			if UI:FindFirstChild("FaceAngry") then 
+				UI.FaceAngry.ImageColor3 = Color3.new(1, 1, 1)
+				UI.FaceAngry.AnchorPoint = Vector2.new(0.5, 0.5)
+				UI.FaceAngry.Size = UDim2.new(1.25, 0, 1.25, 0) 
+			end
+
+			local angryLoop = true
+			local startTime = os.clock()
+			local duration = 0.75
+			local angryRenderConn
+
+			angryRenderConn = RunService.RenderStepped:Connect(function()
+				if angryLoop and angryGlitch then
+					local elapsed = os.clock() - startTime
+					local alpha = math.clamp(elapsed / duration, 0, 1)
+					local currentOffset = 15 + (70 * alpha)
+					angryGlitch.Update(currentOffset)
+
+					if UI:FindFirstChild("FaceAngry") then
+						UI.FaceAngry.Position = UDim2.new(0.5, math.random(-15, 15), 0.5, math.random(-15, 15))
+					end
+					animateStatic()
+				else
+					if angryRenderConn then angryRenderConn:Disconnect() end
+				end
+			end)
+
+			task.wait(duration) 
+			angryLoop = false
+			if angryRenderConn then angryRenderConn:Disconnect() end
+			if angryGlitch then angryGlitch.Stop() end
+
+			local ReplicatedStorage = game:GetService("ReplicatedStorage") 
+			task.spawn(function() 
+				local damageRemote = ReplicatedStorage:FindFirstChild("LocalDamage", true) or ReplicatedStorage:FindFirstChild("ChangeHealth", true) 
+				if damageRemote and damageRemote:IsA("RemoteEvent") then 
+					damageRemote:FireServer(50, "SittingItOut", 1, nil) 
+					damageRemote:FireServer("Damage", 50) 
+				end 
+			end) 
+
+			task.spawn(function() playBiteEffect(15) end)
+
+			task.wait(0.1) 
+			if UI:FindFirstChild("FaceAngry") then UI.FaceAngry.Visible = false end
+			UI.BackgroundColor3 = Color3.new(1, 1, 1) 
+			if UI:FindFirstChild("Static") then UI.Static.ImageTransparency = 1 end
+			if UI:FindFirstChild("Static2") then UI.Static2.ImageTransparency = 1 end
+			task.wait(0.066) 
+			UI.BackgroundColor3 = Color3.new(1, 0, 0) 
+			task.wait(0.066) 
+			UI.BackgroundColor3 = Color3.new(0, 0, 0) 
+			task.wait(0.066) 
+		else 
+			-- NÉ THÀNH CÔNG
+			UI.Visible = true 
+			if UI:FindFirstChild("Face") then
+				UI.Face.Visible = true 
+				UI.Face.Image = FACE_DODGE_ID 
+				UI.Face.ImageColor3 = Color3.new(1, 1, 1) 
+				UI.Face.Position = UDim2.new(0.5, 0, 0.49, 0) 
+			end
+			if UI:FindFirstChild("FaceAngry") then UI.FaceAngry.Visible = false end
+			UI.BackgroundTransparency = 1 
+			if UI:FindFirstChild("Static") then UI.Static.Visible = true; UI.Static.ImageTransparency = 0.8 end
+			if UI:FindFirstChild("Static2") then UI.Static2.Visible = true; UI.Static2.ImageTransparency = 0.8 end
+
+			local dodgeGlitch = createGlitch(UI:FindFirstChild("Face"), 25)
+			local dodgeLoop = true
+			local dodgeRenderConn
+
+			dodgeRenderConn = RunService.RenderStepped:Connect(function()
+				if dodgeLoop and dodgeGlitch then
+					dodgeGlitch.Update(10)
+					animateStatic()
+				else
+					if dodgeRenderConn then dodgeRenderConn:Disconnect() end
+				end
+			end)
+
+			task.wait(0.2) 
+			dodgeLoop = false
+			if dodgeRenderConn then dodgeRenderConn:Disconnect() end
+			if dodgeGlitch then dodgeGlitch.Stop() end
+			UI.BackgroundTransparency = 1 
+		end 
+
+		if faceRenderConn then faceRenderConn:Disconnect() end
+		if faceGlitch then faceGlitch.Stop() end
+		if MainSound and MainSound:IsA("Sound") then MainSound.Volume = OldVolume or 1 end 
+		UI.Visible = false 
+	end) 
+
+	if not Success then 
+		warn("A90 Error:", Error) 
+		UI.Visible = false 
+	end 
+	Busy = false 
+end 
+
+task.wait(1)
+A90()

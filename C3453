@@ -1,0 +1,589 @@
+-- =================================================================
+-- HỆ THỐNG CACHE ÂM THANH BẤT ĐỒNG BỘ
+-- =================================================================
+local CachedSounds = {}
+local getAsset = getcustomasset or getsynasset
+
+local function PreloadSound(soundlink, filename)
+    task.spawn(function()
+        local filePath = filename .. ".mp3"
+        if not isfile(filePath) then
+            writefile(filePath, game:HttpGet(soundlink))
+        end
+        if getAsset then
+            CachedSounds[filename] = getAsset(filePath)
+        end
+    end)
+end
+
+-- Tải song song 3 file âm thanh của Cease
+PreloadSound("https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/cl.mp3", "Cease_Spawn_1")
+PreloadSound("https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/Spawn.mp3.mp3", "Cease_Spawn_2")
+PreloadSound("https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/moving.mp3.mp3", "Cease_Moving")
+
+-- =================================================================
+-- PHÁT ÂM THANH SPAWN BAN ĐẦU (KHI KÍCH HOẠT SCRIPT)
+-- =================================================================
+task.spawn(function()
+    repeat task.wait() until CachedSounds["Cease_Spawn_1"] and CachedSounds["Cease_Spawn_2"]
+    
+    local ImmediateSpawnSound1 = Instance.new("Sound")
+    ImmediateSpawnSound1.SoundId = CachedSounds["Cease_Spawn_1"]
+    ImmediateSpawnSound1.Volume = 10
+    ImmediateSpawnSound1.Parent = game:GetService("SoundService")
+    
+    local ImmediateSpawnSound2 = Instance.new("Sound")
+    ImmediateSpawnSound2.SoundId = CachedSounds["Cease_Spawn_2"]
+    ImmediateSpawnSound2.Volume = 1
+    ImmediateSpawnSound2.Parent = game:GetService("SoundService")
+    
+    ImmediateSpawnSound1:Play()
+    ImmediateSpawnSound2:Play()
+    
+    ImmediateSpawnSound1.Ended:Connect(function() ImmediateSpawnSound1:Destroy() end)
+    ImmediateSpawnSound2.Ended:Connect(function() ImmediateSpawnSound2:Destroy() end)
+end)
+
+-- =================================================================
+-- CẤU HÌNH VÀ KHỞI CHẠY THỰC THỂ CEASE (Z-C34)
+-- =================================================================
+local spawnEntity = loadstring(game:HttpGet("https://raw.githubusercontent.com/cakmay227-svg/random/refs/heads/main/Pressure-Entity-Spawner"))()
+
+spawnEntity({
+    AssetId = "rbxassetid://101213140924420",
+    EntityName = "Cease",
+    MoveSpeed = 65,
+    HitboxRadius = 40,
+    ShakeRadius = 100,
+    DamageAmount = 0,    
+    InstantKill = false,
+    ConstantBloodSucking = false,
+    DelayEachDamage = 0.1,
+    
+    DelayWhenSpawned = true,     
+    Delay = 0, 
+    Rebounding = false,  
+    Reversed = false, 
+    MinRebounds = 1,   
+    MaxRebounds = 1,
+    DelayEachRebound = 3,
+    
+    YOffset = Vector3.new(0, 2, 0),
+    DespawnYOffset = Vector3.new(0, 30, 0),
+    Tolerance = 0.1,
+    FlickerSpeed = 75,
+    MaxDarkness = 0.2,
+    ShakeIntensity = 1.5,
+    ShakeSpeedMultiplier = 1.5,
+    LightFlickerTime = 3,       
+    
+    EnableFlicker = false,
+    EnableShake = true,
+    EnableBlackout = false,
+    EnableBreakLights = false,
+    
+    LightBreakingRange = 35,
+    DarkenPercent = 0.11,
+    AutoScanInterval = 0.1,
+    BreakSoundId = "rbxassetid://13303926122",
+    SoundVolume = 2,
+    SoundDistance = 150,
+    ParticleTexture = "rbxassetid://257173628",
+    ParticleDuration = 0.3,
+    
+    GithubSound = "",         
+    PlayGitSoundWhenSpawned = false, 
+    SoundVolume = 1,        
+    SoundPlaybackSpeed = 1,   
+    
+    DeathImage = "rbxassetid://11417375410",
+    DeathName = "Z-C34 - Cease",
+    DeathNotes = "It's so cold...",
+    DeathImageColor = Color3.fromRGB(255, 255, 255),
+    
+    OnSpawn = function(self) 
+        -- MÀU ĐÈN GIỮ NGUYÊN
+        local LightColor = Color3.fromRGB(130, 150, 255) 
+        -- MÀU NGƯỜI CHƠI TAN BIẾN (TÔNG ĐÈN NHƯNG ĐẬM HƠN RÕ RỆT)
+        local PlayerDeathColor = Color3.fromRGB(50, 80, 180) 
+
+        -- -------------------------------------------------------------
+        -- 1. ĐỔI MÀU ĐÈN VÀ XỬ LÝ QUÁ TRÌNH TÍCH ĐIỆN -> NỔ VỠ ĐÈN
+        -- -------------------------------------------------------------
+        task.spawn(function()
+            local Config = {
+                TargetColor = LightColor, 
+                TweenTime = 0.5,                         
+            }
+
+            local Workspace = workspace
+            local Players = game:GetService("Players")
+            local TweenService = game:GetService("TweenService") 
+            local LocalPlayer = Players.LocalPlayer
+            local Rooms = Workspace:FindFirstChild("GameplayFolder") and Workspace.GameplayFolder:FindFirstChild("Rooms")
+            if not Rooms then return end
+
+            local tweenInfo = TweenInfo.new(Config.TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            local rootPart = character:WaitForChild("HumanoidRootPart", 10)
+            if not rootPart then return end
+
+            local currentRoom = nil
+            local touchingParts = Workspace:GetPartsInPart(rootPart)
+            for i = 1, #touchingParts do
+                local current = touchingParts[i]
+                while current and current.Parent do
+                    if current.Parent == Rooms and current:IsA("Model") then
+                        currentRoom = current
+                        break
+                    end
+                    current = current.Parent
+                end
+                if currentRoom then break end
+            end
+
+            if not currentRoom then
+                local raycastParams = RaycastParams.new()
+                raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+                raycastParams.FilterDescendantsInstances = {character}
+                local rayResult = Workspace:Raycast(rootPart.Position, Vector3.new(0, -20, 0), raycastParams)
+                
+                if rayResult and rayResult.Instance then
+                    local current = rayResult.Instance
+                    while current and current.Parent do
+                        if current.Parent == Rooms and current:IsA("Model") then
+                            currentRoom = current
+                            break
+                        end
+                        current = current.Parent
+                    end
+                end
+            end
+
+            -- Hàm xử lý quá tải đèn và làm vỡ thành 6 mảnh vỡ văng mạnh
+            local function overloadAndShatter(lightPart)
+                if not lightPart or not lightPart:IsA("BasePart") or lightPart:GetAttribute("Shattering") then return end
+                lightPart:SetAttribute("Shattering", true)
+
+                task.delay(0.5, function()
+                    if not lightPart or not lightPart.Parent then return end
+
+                    local overLight = Instance.new("PointLight")
+                    overLight.Color = Config.TargetColor
+                    overLight.Brightness = 0
+                    overLight.Range = 0
+                    overLight.Shadows = false
+                    overLight.Parent = lightPart
+
+                    -- Âm thanh tích điện
+                    local overloadSound = Instance.new("Sound")
+                    overloadSound.SoundId = "rbxassetid://96734351862181"
+                    overloadSound.Volume = 0.4
+                    overloadSound.PlaybackSpeed = 1
+                    overloadSound.RollOffMaxDistance = 180
+                    overloadSound.RollOffMinDistance = 20
+                    overloadSound.RollOffMode = Enum.RollOffMode.Linear
+                    overloadSound.Parent = lightPart
+
+                    local pitchShift = Instance.new("PitchShiftSoundEffect")
+                    pitchShift.Octave = 1.2
+                    pitchShift.Parent = overloadSound
+
+                    overloadSound:Play()
+
+                    -- Tween tăng độ sáng PointLight trong 7s
+                    local tweenOverload = TweenService:Create(overLight, TweenInfo.new(7, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                        Brightness = 10,
+                        Range = 12
+                    })
+                    tweenOverload:Play()
+
+                    -- Tween âm lượng tích điện tăng lên mức 5.0 ở giây thứ 6
+                    TweenService:Create(overloadSound, TweenInfo.new(6, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                        Volume = 5.0
+                    }):Play()
+
+                    -- Khi còn 1s nữa sẽ nổ (ở giây thứ 6), Fade out âm thanh về 0 trong 1s
+                    task.delay(6, function()
+                        if overloadSound and overloadSound.Parent then
+                            TweenService:Create(overloadSound, TweenInfo.new(1, Enum.EasingStyle.Linear), {
+                                Volume = 0
+                            }):Play()
+                        end
+                    end)
+
+                    -- Tween tăng Pitch (Octave lên 2.0) trong suốt 7s
+                    TweenService:Create(pitchShift, TweenInfo.new(7, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                        Octave = 2.0
+                    }):Play()
+
+                    -- Đạt đỉnh điểm sau 7s: Xóa đèn và tạo 6 mảnh vỡ văng ra
+                    task.delay(7, function()
+                        if not lightPart or not lightPart.Parent then return end
+
+                        local origCFrame = lightPart.CFrame
+                        local origSize = lightPart.Size
+                        local fragSize = origSize / 5
+                        
+                        if fragSize.X < 0.2 or fragSize.Y < 0.2 or fragSize.Z < 0.2 then
+                            fragSize = Vector3.new(0.3, 0.3, 0.3)
+                        end
+
+                        if overloadSound then
+                            overloadSound:Stop()
+                            overloadSound:Destroy()
+                        end
+
+                        local tempShatterPart = Instance.new("Part")
+                        tempShatterPart.Anchored = true
+                        tempShatterPart.CanCollide = false
+                        tempShatterPart.Transparency = 1
+                        tempShatterPart.CFrame = origCFrame
+                        tempShatterPart.Parent = Workspace
+
+                        local shatterSoundIds = {
+                            "rbxassetid://138317894393091",
+                            "rbxassetid://138901535589496",
+                            "rbxassetid://119398240584172"
+                        }
+
+                        for _, sndId in ipairs(shatterSoundIds) do
+                            local snd = Instance.new("Sound")
+                            snd.SoundId = sndId
+                            snd.Volume = 0.25
+                            snd.PlaybackSpeed = 0.85
+                            snd.RollOffMaxDistance = 80
+                            snd.RollOffMinDistance = 5
+                            snd.RollOffMode = Enum.RollOffMode.Linear
+                            snd.Parent = tempShatterPart
+                            snd:Play()
+                            snd.Ended:Connect(function() snd:Destroy() end)
+                        end
+
+                        task.delay(5, function()
+                            if tempShatterPart and tempShatterPart.Parent then
+                                tempShatterPart:Destroy()
+                            end
+                        end)
+
+                        lightPart:Destroy()
+
+                        -- Tạo 6 mảnh vỡ hình cầu
+                        for i = 1, 6 do
+                            local frag = Instance.new("Part")
+                            frag.Shape = Enum.PartType.Ball
+                            frag.Size = fragSize
+                            frag.Material = Enum.Material.Neon
+                            frag.Color = Config.TargetColor
+                            frag.CFrame = origCFrame * CFrame.new(
+                                math.random(-3, 3) / 10,
+                                math.random(-3, 3) / 10,
+                                math.random(-3, 3) / 10
+                            )
+                            frag.Anchored = false
+                            frag.CanCollide = true
+                            frag.CanTouch = true   
+                            frag.CanQuery = false
+                            frag.CastShadow = false
+
+                            frag.Velocity = Vector3.new(
+                                math.random(-20, 20),
+                                math.random(10, 25),
+                                math.random(-20, 20)
+                            )
+                            frag.Parent = Workspace
+
+                            local fragLight = Instance.new("PointLight")
+                            fragLight.Color = Config.TargetColor
+                            fragLight.Brightness = 2
+                            fragLight.Range = 4.5
+                            fragLight.Shadows = false
+                            fragLight.Parent = frag
+
+                            local flickerInfo = TweenInfo.new(
+                                math.random(8, 14) / 10, 
+                                Enum.EasingStyle.Sine, 
+                                Enum.EasingDirection.InOut, 
+                                -1, 
+                                true
+                            )
+                            local flickerTweenFrag = TweenService:Create(frag, flickerInfo, {Transparency = 0.4})
+                            local flickerTweenLight = TweenService:Create(fragLight, flickerInfo, {Brightness = 0.3, Range = 1.5})
+                            flickerTweenFrag:Play()
+                            flickerTweenLight:Play()
+
+                            local hasLanded = false
+                            local touchConn
+                            touchConn = frag.Touched:Connect(function(hit)
+                                if not hasLanded and hit and hit.CanCollide and not hit:IsDescendantOf(character) then
+                                    hasLanded = true
+                                    if touchConn then touchConn:Disconnect() end
+
+                                    local waitTime = math.random(110, 125) / 10
+                                    task.delay(waitTime, function()
+                                        if not frag or not frag.Parent then return end
+
+                                        flickerTweenFrag:Cancel()
+                                        flickerTweenLight:Cancel()
+
+                                        TweenService:Create(frag, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                                            Size = fragSize * 5
+                                        }):Play()
+
+                                        local flareLightTween = TweenService:Create(fragLight, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                                            Brightness = 6,
+                                            Range = 8
+                                        })
+                                        flareLightTween:Play()
+
+                                        flareLightTween.Completed:Connect(function()
+                                            if not frag or not frag.Parent then return end
+
+                                            local fadeFrag = TweenService:Create(frag, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                                                Transparency = 1
+                                            })
+                                            TweenService:Create(fragLight, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                                                Brightness = 0,
+                                                Range = 0
+                                            }):Play()
+
+                                            fadeFrag:Play()
+                                            fadeFrag.Completed:Connect(function()
+                                                frag:Destroy()
+                                            end)
+                                        end)
+                                    end)
+                                end
+                            end)
+
+                            task.delay(18, function()
+                                if frag and frag.Parent and not hasLanded then
+                                    frag:Destroy()
+                                end
+                            end)
+                        end
+                    end)
+                end)
+            end
+
+            if currentRoom then
+                for _, obj in ipairs(currentRoom:GetDescendants()) do
+                    if obj:IsA("Light") then
+                        local path = obj:GetFullName()
+                        if path:find("%.Lights") or path:find("neon") or path:find("nec") then
+                            obj.Enabled = true
+                            TweenService:Create(obj, tweenInfo, {Color = Config.TargetColor}):Play() 
+                            if obj.Parent and obj.Parent:IsA("BasePart") then
+                                overloadAndShatter(obj.Parent)
+                            end
+                        end
+                    elseif obj:IsA("MeshPart") or obj:IsA("BasePart") then
+                        local nameLower = obj.Name:lower()
+                        if nameLower == "neon" or nameLower == "smallneon" or nameLower == "nec" then
+                            obj.Material = Enum.Material.Neon 
+                            TweenService:Create(obj, tweenInfo, {Color = Config.TargetColor}):Play() 
+                            overloadAndShatter(obj)
+                        end
+                    end
+                end
+            end
+        end)
+
+        -- -------------------------------------------------------------
+        -- 2. GÁN ÂM THANH DI CHUYỂN CHO THỰC THỂ CEASE
+        -- -------------------------------------------------------------
+        task.spawn(function()
+            local entityRoot = nil
+            for i = 1, 40 do
+                local ceaseModel = workspace:FindFirstChild("Cease")
+                if ceaseModel then
+                    entityRoot = ceaseModel.PrimaryPart or ceaseModel:FindFirstChildWhichIsA("BasePart")
+                    if entityRoot then break end
+                end
+                task.wait(0.05)
+            end
+
+            if entityRoot then
+                for _, obj in ipairs(entityRoot.Parent:GetDescendants()) do
+                    if obj:IsA("Sound") then
+                        obj:Stop()
+                        obj:Destroy()
+                    end
+                end
+
+                repeat task.wait() until CachedSounds["Cease_Moving"]
+                
+                local MoveSound = Instance.new("Sound")
+                MoveSound.SoundId = CachedSounds["Cease_Moving"]
+                MoveSound.Volume = 2.5
+                MoveSound.RollOffMaxDistance = 100
+                MoveSound.RollOffMinDistance = 15
+                MoveSound.RollOffMode = Enum.RollOffMode.Linear
+                MoveSound.Looped = true
+                MoveSound.Parent = entityRoot
+                MoveSound:Play()
+            end
+        end)
+
+        -- -------------------------------------------------------------
+        -- 3. CƠ CHẾ PHÁT HIỆN CHUYỂN ĐỘNG & HIỆU ỨNG TAN BIẾN + POINT LIGHT
+        -- -------------------------------------------------------------
+        local hitboxRaycast = 120   -- Hitbox 1: Tầm xa 120 (có xét cản tường)
+        local hitboxWallbang = 40    -- Hitbox 2: Tầm gần 40 (xuyên tường)
+        local player = game.Players.LocalPlayer
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local TweenService = game:GetService("TweenService")
+        
+        local function killOneShot()
+            local damageRemote = ReplicatedStorage:FindFirstChild("LocalDamage", true) or ReplicatedStorage:FindFirstChild("ChangeHealth", true)
+            if damageRemote and damageRemote:IsA("RemoteEvent") then
+                damageRemote:FireServer(100, "SittingItOut", 1, nil)
+                damageRemote:FireServer("Damage", 100)
+            end
+        end
+
+        -- Hàm hiệu ứng: Neon Xanh Đậm + PointLight + Phóng to 1.2x -> Giữ 0.5s -> Tan biến 3.5s
+        local function playNeonDeathEffect(character)
+            task.spawn(function()
+                local hum = character:FindFirstChildOfClass("Humanoid")
+                local rootPart = character:FindFirstChild("HumanoidRootPart")
+                
+                if hum then 
+                    hum.WalkSpeed = 0 
+                end
+
+                -- Tạo PointLight phát sáng vừa phải quanh người chơi
+                local playerLight = nil
+                if rootPart then
+                    -- Âm thanh tan biến (ID: 130955321322500) - Volume = 6
+                    local disintegrateSound = Instance.new("Sound")
+                    disintegrateSound.SoundId = "rbxassetid://130955321322500"
+                    disintegrateSound.Volume = 6
+                    disintegrateSound.Parent = rootPart
+                    disintegrateSound:Play()
+
+                    -- Gắn PointLight màu Neon người chơi
+                    playerLight = Instance.new("PointLight")
+                    playerLight.Color = PlayerDeathColor
+                    playerLight.Brightness = 3
+                    playerLight.Range = 10
+                    playerLight.Shadows = false
+                    playerLight.Parent = rootPart
+                end
+
+                -- Dọn dẹp quần áo/mặt
+                for _, child in ipairs(character:GetChildren()) do
+                    if child:IsA("Clothing") or child:IsA("ShirtGraphic") or child:IsA("CharacterMesh") then
+                        child:Destroy()
+                    end
+                end
+
+                local charParts = {}
+                for _, part in ipairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        table.insert(charParts, part)
+                        if part:FindFirstChildOfClass("Decal") then
+                            part:FindFirstChildOfClass("Decal"):Destroy()
+                        end
+                        
+                        -- Chuyển Neon Xanh Đậm + Phóng to 1.2x trong 0.3s
+                        part.Material = Enum.Material.Neon
+                        TweenService:Create(part, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                            Color = PlayerDeathColor,
+                            Size = part.Size * 1.2
+                        }):Play()
+                    end
+                end
+
+                -- Giữ nguyên kích thước + ánh sáng trong 0.5s
+                task.wait(0.5)
+
+                -- Làm mờ / Tắt dần PointLight đồng bộ trong 3.5s
+                if playerLight then
+                    TweenService:Create(playerLight, TweenInfo.new(3.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                        Brightness = 0,
+                        Range = 0
+                    }):Play()
+                end
+
+                -- Thu nhỏ các bộ phận và mờ hoàn toàn trong 3.5s
+                for _, part in ipairs(charParts) do
+                    if part and part.Parent then
+                        TweenService:Create(part, TweenInfo.new(3.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                            Size = Vector3.new(0.001, 0.001, 0.001),
+                            Transparency = 1
+                        }):Play()
+                    end
+                end
+
+                task.wait(3.5)
+
+                -- Kết liễu người chơi
+                killOneShot()
+            end)
+        end
+
+        if _G.MovementCheck then
+            _G.MovementCheck:Disconnect()
+            _G.MovementCheck = nil
+        end
+
+        _G.MovementCheck = game:GetService("RunService").Heartbeat:Connect(function()
+            local entModel = (self and self.Model) or workspace:FindFirstChild("Cease")
+            if not entModel or not player.Character then return end
+            
+            local pRoot = player.Character:FindFirstChild("HumanoidRootPart")
+            local hum = player.Character:FindFirstChildOfClass("Humanoid")
+            if not pRoot or not hum then return end
+
+            local basePart = entModel:FindFirstChildWhichIsA("BasePart")
+            if not basePart then return end
+
+            local origin = basePart.Position
+            local distance = (pRoot.Position - origin).Magnitude
+
+            if hum.MoveDirection.Magnitude > 0 then
+                local isKilled = false
+
+                -- [Hitbox 2]: Xuyên tường tầm gần (40 studs)
+                if distance <= hitboxWallbang then
+                    isKilled = true
+                -- [Hitbox 1]: Tầm xa 120 studs (có kiểm tra vật cản)
+                elseif distance <= hitboxRaycast then
+                    local direction = (pRoot.Position - origin).Unit
+                    local raycastParams = RaycastParams.new()
+                    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+                    raycastParams.FilterDescendantsInstances = {entModel}
+
+                    local result = workspace:Raycast(origin, direction * hitboxRaycast, raycastParams)
+                    if result and result.Instance:IsDescendantOf(player.Character) then
+                        isKilled = true
+                    end
+                end
+
+                if isKilled then
+                    if _G.MovementCheck then 
+                        _G.MovementCheck:Disconnect() 
+                        _G.MovementCheck = nil
+                    end
+
+                    -- Chạy hiệu ứng tan biến + PointLight
+                    playNeonDeathEffect(player.Character)
+                end
+            end
+        end)
+    end,
+    
+    OnMoveStart = function() end,
+    OnRoomEnter = function(roomName) end,
+    OnDamagePlayer = function() end,
+    OnKillPlayer = function() end,
+    OnDespawning = function() end,
+    
+    OnDespawned = function() 
+        if _G.MovementCheck then 
+            _G.MovementCheck:Disconnect() 
+            _G.MovementCheck = nil
+        end 
+    end,
+})

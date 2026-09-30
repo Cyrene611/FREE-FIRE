@@ -1,0 +1,166 @@
+local volumeMultiplier = 2.5
+local targetColor = Color3.fromRGB(200, 0, 0)
+local redSequence = ColorSequence.new(targetColor)
+
+local EntitySpawner = {}
+
+function EntitySpawner.Spawn(modelId, parentTarget, spawnCFrame)
+    task.spawn(function()
+        local success, objects = pcall(function()
+            return game:GetObjects("rbxassetid://" .. tostring(modelId))
+        end)
+
+        if success and objects and #objects > 0 then
+            local entityModel = objects[1]
+            if entityModel then
+                entityModel.Parent = parentTarget or workspace
+                
+                if spawnCFrame then
+                    if entityModel:IsA("Model") then
+                        if not entityModel.PrimaryPart then
+                            entityModel.PrimaryPart = entityModel:FindFirstChildWhichIsA("BasePart")
+                        end
+                        entityModel:PivotTo(spawnCFrame)
+                    elseif entityModel:IsA("BasePart") then
+                        entityModel.CFrame = spawnCFrame
+                    end
+                end
+                return entityModel
+            end
+        end
+    end)
+end
+
+local function GitAud(soundlink, filename)
+    local url = soundlink
+    local FileName = filename
+    if not isfile(FileName..".mp3") then
+        writefile(FileName..".mp3", game:HttpGet(url))
+    end
+    return (getcustomasset or getsynasset)(FileName..".mp3")
+end
+
+local successStart, customBuildUpId = pcall(function() 
+    return GitAud("https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/ABOMINATION%20START.mp3", "AbominationStart_Custom") 
+end)
+
+local successLoop, customFadeOutId = pcall(function() 
+    return GitAud("https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/ABOMINATION%20LOOP.mp3", "AbominationLoop_Custom") 
+end)
+
+local successSearchlight, customSearchlightId = pcall(function()
+    return GitAud("https://github.com/Cyrene611/PHCM/raw/refs/heads/main/NOT%20SEARCH%20PARTY.mp3", "RegSearchlightsLoop_Custom")
+end)
+
+local function applyRedToEffectsAndNeon(item)
+    if (item:IsA("BasePart") or item:IsA("MeshPart")) and item.Material == Enum.Material.Neon then
+        item.Color = targetColor
+    elseif item:IsA("Light") then
+        item.Color = targetColor
+    elseif item:IsA("Highlight") then
+        item.FillColor = targetColor
+        item.OutlineColor = targetColor
+    elseif item:IsA("ParticleEmitter") or item:IsA("Beam") or item:IsA("Trail") then
+        item.Color = redSequence
+    end
+end
+
+local function handleChaseNeon(part)
+    if part.Name == "ChaseNeon" and (part:IsA("BasePart") or part:IsA("MeshPart")) then
+        part.Color = targetColor
+        for _, desc in pairs(part:GetDescendants()) do
+            applyRedToEffectsAndNeon(desc)
+        end
+        part.DescendantAdded:Connect(function(newDescendant)
+            applyRedToEffectsAndNeon(newDescendant)
+        end)
+    end
+end
+
+local function handleAbominationModel(model)
+    if model.Name == "Abomination" and model:IsA("Model") then
+        for _, descendant in pairs(model:GetDescendants()) do
+            applyRedToEffectsAndNeon(descendant)
+        end
+        model.DescendantAdded:Connect(function(descendant)
+            applyRedToEffectsAndNeon(descendant)
+        end)
+    end
+end
+
+local function handleChaseFanModel(model)
+    if model:IsA("Model") and string.find(model.Name, "ChaseFanModel") then
+        local function processFanItem(item)
+            if item.Name == "SmallNeon" and (item:IsA("BasePart") or item:IsA("MeshPart")) then
+                item.Color = targetColor
+            end
+            if item:IsA("Light") then
+                item.Color = targetColor
+            end
+            applyRedToEffectsAndNeon(item)
+        end
+        
+        for _, desc in pairs(model:GetDescendants()) do
+            processFanItem(desc)
+        end
+        model.DescendantAdded:Connect(function(newDesc)
+            processFanItem(newDesc)
+        end)
+    end
+end
+
+local function handleSearchlightModel(model)
+    if model.Name == "Searchlights" and model:IsA("Model") then
+        for _, desc in pairs(model:GetDescendants()) do
+            applyRedToEffectsAndNeon(desc)
+        end
+        model.DescendantAdded:Connect(function(newDesc)
+            applyRedToEffectsAndNeon(newDesc)
+        end)
+    end
+end
+
+local function handleSound(sound)
+    if sound:IsA("Sound") then
+        local function applyCustomId(targetId, multiplyVolume)
+            if sound.SoundId ~= targetId then
+                local originalVolume = sound.Volume
+                sound.Volume = 0
+                sound.SoundId = targetId
+                task.defer(function()
+                    if multiplyVolume then
+                        sound.Volume = originalVolume * volumeMultiplier
+                    else
+                        sound.Volume = originalVolume
+                    end
+                end)
+            end
+        end
+
+        if sound.Name == "AbominationBuildUp" and successStart and customBuildUpId then
+            applyCustomId(customBuildUpId, false)
+        elseif sound.Name == "AbominationMusic" and successLoop and customFadeOutId then
+            applyCustomId(customFadeOutId, true)
+        elseif sound.Name == "RegSearchlightsLoop" and successSearchlight and customSearchlightId then
+            applyCustomId(customSearchlightId, false)
+        end
+    end
+end
+
+local function masterCheck(object)
+    handleSound(object)
+    handleChaseNeon(object)
+    handleAbominationModel(object)
+    handleChaseFanModel(object)
+    handleSearchlightModel(object)
+end
+
+workspace.DescendantAdded:Connect(function(descendant)
+    masterCheck(descendant)
+end)
+
+for _, descendant in pairs(workspace:GetDescendants()) do
+    masterCheck(descendant)
+end
+
+_G.EntitySpawner = EntitySpawner

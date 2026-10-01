@@ -132,20 +132,20 @@ spawnEntity({
     EnableFlicker = false,
     EnableShake = false,
     EnableBlackout = true,
-    EnableBreakLights = false,
+    EnableBreakLights = true,
     
     GithubSound = "",         
     PlayGitSoundWhenSpawned = false, 
     SoundVolume = 1,        
     SoundPlaybackSpeed = 1,
 
-    LightBreakRange = 35,                          
+    LightBreakRange = 70,                          
     LightDarkenPercent = 0.11,                
     LightAutoScanInterval = 0.1,              
     
     LightSoundId = "rbxassetid://13303926122", 
     LightSoundVolume = 2,                   
-    LightSoundDistance = 150,                 
+    LightSoundDistance = 350,                 
     
     LightParticleTexture = "rbxassetid://257173628", 
     LightParticleDuration = 0.3,

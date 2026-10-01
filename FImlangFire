@@ -139,13 +139,13 @@ spawnEntity({
     SoundVolume = 1,        
     SoundPlaybackSpeed = 1,
 
-    LightBreakRange = 70,                          
+    LightBreakRange = 80,                          
     LightDarkenPercent = 0.11,                
     LightAutoScanInterval = 0.1,              
     
     LightSoundId = "rbxassetid://13303926122", 
-    LightSoundVolume = 2,                   
-    LightSoundDistance = 350,                 
+    LightSoundVolume = 4,                   
+    LightSoundDistance = 370,                 
     
     LightParticleTexture = "rbxassetid://257173628", 
     LightParticleDuration = 0.3,

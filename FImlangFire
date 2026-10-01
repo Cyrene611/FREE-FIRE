@@ -94,7 +94,7 @@ local spawnEntity = loadstring(game:HttpGet("https://github.com/Cyrene611/Pressu
 spawnEntity({
     AssetId = "rbxassetid://111692453970260",
     EntityName = "Silence",
-    MoveSpeed = 76,
+    MoveSpeed = 56,
     HitboxRadius = 120,
     ShakeRadius = 120,
     DamageAmount = 0,    
@@ -139,7 +139,7 @@ spawnEntity({
     SoundVolume = 1,        
     SoundPlaybackSpeed = 1,
 
-    LightBreakRange = 80,                          
+    LightBreakRange = 180,                          
     LightDarkenPercent = 0.11,                
     LightAutoScanInterval = 0.1,              
     

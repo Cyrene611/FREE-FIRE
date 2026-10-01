@@ -151,7 +151,7 @@ spawnEntity({
     LightParticleDuration = 0.3,
     
     DeathImage = "rbxassetid://78666140831420",
-    DeathName = "Pandemonium",
+    DeathName = "Silence",
     DeathNotes = "Wait... Is that bootleg one?!",
     DeathImageColor = Color3.fromRGB(255, 255, 255),
     
@@ -172,9 +172,9 @@ spawnEntity({
             targetPart, 
             "https://github.com/Cyrene611/Modes/raw/refs/heads/main/far%20loop.mp3", 
             "Silence_FarLoop", 
-            3, 
+            4, 
             10, 
-            400
+            600
         )
         
         -- Scream Loop Sound

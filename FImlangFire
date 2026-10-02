@@ -56,7 +56,7 @@ local function TriggerCatch(actualEntity)
 
         -- Cho tiếng hét phát tiếp 2s rồi Fade Out trong 0.5s
         task.spawn(function()
-            task.wait(2)
+            task.wait(4)
             if chaseSound and chaseSound.Parent then
                 local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Linear)
                 local tween = TweenService:Create(chaseSound, tweenInfo, {Volume = 0})
@@ -139,13 +139,13 @@ spawnEntity({
     SoundVolume = 1,        
     SoundPlaybackSpeed = 1,
 
-    LightBreakRange = 330,                          
+    LightBreakRange = 2330,                          
     LightDarkenPercent = 0.01,                
-    LightAutoScanInterval = 0.3,              
+    LightAutoScanInterval = 10,              
     
     LightSoundId = "rbxassetid://13303926122", 
     LightSoundVolume = 6,                   
-    LightSoundDistance = 600,                 
+    LightSoundDistance = 999,                 
     
     LightParticleTexture = "rbxassetid://257173628", 
     LightParticleDuration = 0.3,
@@ -170,8 +170,8 @@ spawnEntity({
         -- Far Loop Sound
         idleSound = AttachEntitySound(
             targetPart, 
-            "https://github.com/Cyrene611/Modes/raw/refs/heads/main/far%20loop.mp3", 
-            "Silence_FarLoop", 
+            "https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/Far.mp3", 
+            "Silence_FarLoooop", 
             5, 
             10, 
             800

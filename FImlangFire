@@ -139,13 +139,13 @@ spawnEntity({
     SoundVolume = 1,        
     SoundPlaybackSpeed = 1,
 
-    LightBreakRange = 230,                          
+    LightBreakRange = 330,                          
     LightDarkenPercent = 0.11,                
     LightAutoScanInterval = 0.1,              
     
     LightSoundId = "rbxassetid://13303926122", 
     LightSoundVolume = 6,                   
-    LightSoundDistance = 370,                 
+    LightSoundDistance = 600,                 
     
     LightParticleTexture = "rbxassetid://257173628", 
     LightParticleDuration = 0.3,
@@ -172,9 +172,9 @@ spawnEntity({
             targetPart, 
             "https://github.com/Cyrene611/Modes/raw/refs/heads/main/far%20loop.mp3", 
             "Silence_FarLoop", 
-            4, 
+            5, 
             10, 
-            600
+            800
         )
         
         -- Scream Loop Sound

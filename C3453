@@ -426,7 +426,7 @@ spawnEntity({
         end)
 
         -- -------------------------------------------------------------
-        -- 3. CƠ CHẾ PHÁT HIỆN CHUYỂN ĐỘNG & HIỆU ỨNG TAN BIẾN + POINT LIGHT
+        -- 3. CƠ CHẾ PHÁT HIỆN CHUYỂN ĐỘNG & KIỂM TRA THÁNH GIÁ (CRUCIFIX)
         -- -------------------------------------------------------------
         local hitboxRaycast = 120   -- Hitbox 1: Tầm xa 120 (có xét cản tường)
         local hitboxWallbang = 40    -- Hitbox 2: Tầm gần 40 (xuyên tường)
@@ -523,6 +523,31 @@ spawnEntity({
             end)
         end
 
+        -- HÀM KIỂM TRA THÁNH GIÁ SIÊU KỸ
+        local function checkHoldingCrucifix()
+            local charactersFolder = workspace:FindFirstChild("Characters")
+            
+            -- 1. Quét trong workspace.Characters
+            if charactersFolder then
+                for _, item in ipairs(charactersFolder:GetDescendants()) do
+                    if item.Name:lower() == "customcrucifix" then
+                        return true
+                    end
+                end
+            end
+            
+            -- 2. Quét dự phòng trong Character hiện tại của Player
+            if player.Character then
+                for _, item in ipairs(player.Character:GetDescendants()) do
+                    if item.Name:lower() == "customcrucifix" then
+                        return true
+                    end
+                end
+            end
+
+            return false
+        end
+
         if _G.MovementCheck then
             _G.MovementCheck:Disconnect()
             _G.MovementCheck = nil
@@ -539,10 +564,10 @@ spawnEntity({
             local basePart = entModel:FindFirstChildWhichIsA("BasePart")
             if not basePart then return end
 
-            local origin = basePart.Position
-            local distance = (pRoot.Position - origin).Magnitude
-
+            -- CHỈ XỬ LÝ KHI NGƯỜI CHƠI DI CHUYỂN
             if hum.MoveDirection.Magnitude > 0 then
+                local origin = basePart.Position
+                local distance = (pRoot.Position - origin).Magnitude
                 local isKilled = false
 
                 -- [Hitbox 2]: Xuyên tường tầm gần (40 studs)
@@ -562,13 +587,48 @@ spawnEntity({
                 end
 
                 if isKilled then
-                    if _G.MovementCheck then 
-                        _G.MovementCheck:Disconnect() 
-                        _G.MovementCheck = nil
-                    end
+                    local isHoldingCrucifix = checkHoldingCrucifix()
+                    
+                    -- In ra Console F9 để debug xem script tìm thấy thánh giá chưa
+                    warn("[Cease Check] Trang thai CustomCrucifix:", isHoldingCrucifix and "TIM THAY THANH GIA!" or "KHONG TIM THAY")
 
-                    -- Chạy hiệu ứng tan biến + PointLight
-                    playNeonDeathEffect(player.Character)
+                    if isHoldingCrucifix then
+                        -- CẦM THÁNH GIÁ + DI CHUYỂN -> ĐỔI TÊN THÀNH NGUNG VÀ BIẾN MẤT
+                        if _G.MovementCheck then 
+                            _G.MovementCheck:Disconnect() 
+                            _G.MovementCheck = nil
+                        end
+
+                        if entModel then
+                            entModel.Name = "Ngung"
+                            
+                            -- Dừng toàn bộ âm thanh và cố định thực thể
+                            for _, obj in ipairs(entModel:GetDescendants()) do
+                                if obj:IsA("Sound") then
+                                    obj:Stop()
+                                    obj:Destroy()
+                                elseif obj:IsA("BasePart") then
+                                    obj.Anchored = true
+                                    obj.CanTouch = false
+                                end
+                            end
+
+                            -- Biến mất hoàn toàn sau 1 giây
+                            task.delay(1, function()
+                                if entModel and entModel.Parent then
+                                    entModel:Destroy()
+                                end
+                            end)
+                        end
+                    else
+                        -- KHÔNG CẦM THÁNH GIÁ + DI CHUYỂN -> BẮT ĐẦU HIỆU ỨNG CHẾT
+                        if _G.MovementCheck then 
+                            _G.MovementCheck:Disconnect() 
+                            _G.MovementCheck = nil
+                        end
+
+                        playNeonDeathEffect(player.Character)
+                    end
                 end
             end
         end)

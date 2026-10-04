@@ -1,0 +1,1132 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
+
+local localPlayer = Players.LocalPlayer
+local CRUCIFIX_ASSET_ID = "100791688541337" -- Model Thánh Giá cầm trên tay
+local FLYING_CRUCIFIX_ASSET_ID = "99167152754706" -- Model Thánh Giá bay lên khi trị
+
+local RIPE_EFFECT_ASSET_ID = "74827363682770" -- Model Ripe bị thánh giá
+local REBOUND_EFFECT_ASSET_ID = "119405012791015" -- Model ReboundChild bị thánh giá
+local A120_EFFECT_ASSET_ID = "72671609239748" -- Model A-120 bị thánh giá
+local SILENCE_EFFECT_ASSET_ID = "111692453970260" -- Model Silence bị thánh giá
+local A90_EFFECT_ASSET_ID = "140583074618954" -- Model A-90 bị thánh giá
+local CEASE_EFFECT_ASSET_ID = "103896207986677" -- Model Ngung bị thánh giá
+local CONDUCTOR_EFFECT_ASSET_ID = "124787655540980" -- Model Conductor bị thánh giá
+
+local EFFECT_MODEL_ASSET_ID = "93726426819525" -- Model hiệu ứng thánh giá
+
+-- CẤU HÌNH BÁN KÍNH MẶC ĐỊNH
+local DEFAULT_SOUND_RANGE = 45 -- Range phát âm thanh mặc định
+local DEFAULT_BANISH_RANGE = 43 -- Range thực thể bị trị mặc định
+
+-- LINK ÂM THANH THÁNH GIÁ THỰC THỂ & THÁNH GIÁ VỠ
+local ENTITY_SOUND_URL = "https://github.com/Cyrene611/Crucifix/raw/refs/heads/main/CRISTIANO%20RONALDO%20.mp3"
+local ENTITY_SOUND_NAME = "CrucifixEntitySound"
+
+local BREAK_SOUND_URL = "https://github.com/Cyrene611/Crucifix/raw/refs/heads/main/v%E1%BB%A1%20.mp3"
+local BREAK_SOUND_NAME = "CrucifixBreakSound"
+
+-- TÙY CHỈNH ĐỘ CAO MẶT SÀN
+local FLOOR_OFFSET = 1.32 
+
+-- Danh sách thực thể mục tiêu, ID Model & Cấu hình Range riêng
+local TARGET_ENTITIES = {
+    ["Ripe"] = { EffectId = RIPE_EFFECT_ASSET_ID, SoundRange = 45, BanishRange = 43 },
+    ["ReboundChild"] = { EffectId = REBOUND_EFFECT_ASSET_ID, SoundRange = 45, BanishRange = 43 },
+    ["A120"] = { EffectId = A120_EFFECT_ASSET_ID, SoundRange = 33, BanishRange = 30 },
+    ["A-120"] = { EffectId = A120_EFFECT_ASSET_ID, SoundRange = 33, BanishRange = 30 },
+    ["Silence"] = { EffectId = SILENCE_EFFECT_ASSET_ID, SoundRange = 33, BanishRange = 30 },
+    ["A90"] = { EffectId = A90_EFFECT_ASSET_ID, SoundRange = 33, BanishRange = 30 },
+    ["A-90"] = { EffectId = A90_EFFECT_ASSET_ID, SoundRange = 33, BanishRange = 30 },
+    ["Ngung"] = { EffectId = CEASE_EFFECT_ASSET_ID, SoundRange = 125, BanishRange = 125 },
+    ["Conductor"] = { EffectId = CONDUCTOR_EFFECT_ASSET_ID, SoundRange = 65, BanishRange = 60 }
+}
+
+-- Biến quản lý trạng thái
+local isEquipped = false
+local hasBeenUsed = false -- Thánh giá chỉ dùng được 1 lần
+local crucifixModel = nil
+local shoulderConnection = nil
+local entityCheckConnection = nil
+local signalConnection = nil
+local processedEntities = {}
+local soundPlayedEntities = {}
+
+local currentAlpha = 0
+local targetAlpha = 0
+local ANIM_SPEED = 6 
+
+-- =======================================================
+-- HỆ THỐNG GỬI TÍN HIỆU EXECUTOR (GETGENV & _G)
+-- =======================================================
+local function setCrucifixSignal(state)
+    if getgenv then
+        getgenv().IsHoldingCrucifix = state
+        getgenv().HoldingCrucifix = state
+    end
+    _G.IsHoldingCrucifix = state
+    _G.HoldingCrucifix = state
+end
+
+local function setReboundBanishedSignal(state)
+    if getgenv then
+        getgenv().IsReboundBanished = state
+        getgenv().ReboundBanished = state
+    end
+    _G.IsReboundBanished = state
+    _G.ReboundBanished = state
+end
+
+-- Khởi tạo ban đầu
+setCrucifixSignal(false)
+setReboundBanishedSignal(false)
+
+-- GỬI TÍN HIỆU LIÊN TỤC MỖI FRAME (RENDERSTEPPED)
+if not signalConnection then
+    signalConnection = RunService.RenderStepped:Connect(function()
+        setCrucifixSignal(isEquipped)
+    end)
+end
+
+-- HÀM TẢI ÂM THANH TỪ GITHUB
+local function GitAud(soundlink, filename)
+    local FileName = filename .. ".mp3"
+    if not isfile(FileName) then
+        writefile(FileName, game:HttpGet(soundlink))
+    end
+    return (getcustomasset or getsynasset)(FileName)
+end
+
+-- =======================================================
+-- MÔ-ĐỦN RUNG MÀN HÌNH TỐI ƯU SIÊU MƯỢT & CINEMATIC
+-- =======================================================
+local activeShaker = nil
+
+local function initializeBypassedShaker()
+    local playerCamera = workspace.CurrentCamera or workspace:FindFirstChildWhichIsA("Camera")
+    if not playerCamera then return nil end
+
+    local renderPriority = Enum.RenderPriority.Camera.Value + 1
+    local shakerInstance = {
+        ["_renderName"] = "BypassedCameraShaker",
+        ["_renderPriority"] = renderPriority,
+        ["_camShakeInstances"] = {},
+        ["_removeInstances"] = {}
+    }
+
+    RunService:BindToRenderStep(shakerInstance._renderName, shakerInstance._renderPriority, function(deltaTime)
+        playerCamera = workspace.CurrentCamera
+        if not playerCamera then return end
+
+        local posAccumulator = Vector3.zero
+        local rotAccumulator = Vector3.zero
+        local instances = shakerInstance._camShakeInstances
+
+        for i = 1, #instances do
+            local inst = instances[i]
+            if inst then
+                local deltaTick = inst.tick
+                local fadeTime = inst.currentFadeTime
+
+                if inst.isContinuous then
+                    if inst.isSustained then
+                        if inst.fadeInDuration > 0 then
+                            fadeTime = math.min(1, fadeTime + deltaTime / inst.fadeInDuration)
+                        else
+                            fadeTime = 1
+                        end
+                    else
+                        fadeTime = fadeTime - deltaTime / inst.fadeOutDuration
+                    end
+                else
+                    if inst.fadeInDuration > 0 and inst.sustain then
+                        if fadeTime < 1 then
+                            fadeTime = fadeTime + deltaTime / inst.fadeInDuration
+                        else
+                            inst.sustain = false
+                        end
+                    end
+                    if not inst.sustain then
+                        fadeTime = fadeTime - deltaTime / inst.fadeOutDuration
+                    end
+                end
+
+                inst.currentFadeTime = fadeTime
+
+                if fadeTime <= 0 and not inst.isSustained then
+                    shakerInstance._removeInstances[#shakerInstance._removeInstances + 1] = i
+                else
+                    local noiseVal = Vector3.new(
+                        math.noise(deltaTick, 0) * 0.5,
+                        math.noise(0, deltaTick) * 0.5,
+                        math.noise(deltaTick, deltaTick) * 0.5
+                    )
+
+                    inst.tick = deltaTick + deltaTime * inst.Roughness * inst.roughMod
+                    local shakeVector = noiseVal * inst.Magnitude * inst.magnMod * fadeTime
+
+                    posAccumulator = posAccumulator + shakeVector * inst.PositionInfluence
+                    rotAccumulator = rotAccumulator + shakeVector * inst.RotationInfluence
+                end
+            end
+        end
+
+        for i = #shakerInstance._removeInstances, 1, -1 do
+            table.remove(instances, shakerInstance._removeInstances[i])
+            shakerInstance._removeInstances[i] = nil
+        end
+
+        local finalCFrame = CFrame.new(posAccumulator) 
+            * CFrame.Angles(0, math.rad(rotAccumulator.Y), 0) 
+            * CFrame.Angles(math.rad(rotAccumulator.X), 0, math.rad(rotAccumulator.Z))
+
+        playerCamera.CFrame = playerCamera.CFrame * finalCFrame
+    end)
+
+    return shakerInstance
+end
+
+activeShaker = initializeBypassedShaker()
+
+local function shakeCameraImpact()
+    if not activeShaker then return end
+    local newInstance = {
+        ["Magnitude"] = 14,
+        ["Roughness"] = 5,
+        ["PositionInfluence"] = Vector3.new(0.4, 0.4, 0.4),
+        ["RotationInfluence"] = Vector3.new(4, 2, 2),
+        ["roughMod"] = 1,
+        ["magnMod"] = 1,
+        ["fadeOutDuration"] = 0.45,
+        ["fadeInDuration"] = 0,
+        ["sustain"] = false,
+        ["currentFadeTime"] = 1,
+        ["isContinuous"] = false,
+        ["tick"] = Random.new():NextNumber(-100, 100)
+    }
+    table.insert(activeShaker._camShakeInstances, newInstance)
+end
+
+local function shakeCameraLightImpact()
+    if not activeShaker then return end
+    local newInstance = {
+        ["Magnitude"] = 3.2,
+        ["Roughness"] = 4.0,
+        ["PositionInfluence"] = Vector3.new(0.25, 0.25, 0.25),
+        ["RotationInfluence"] = Vector3.new(2.0, 1.2, 1.2),
+        ["roughMod"] = 1,
+        ["magnMod"] = 1,
+        ["fadeOutDuration"] = 0.4,
+        ["fadeInDuration"] = 0,
+        ["sustain"] = false,
+        ["currentFadeTime"] = 1,
+        ["isContinuous"] = false,
+        ["tick"] = Random.new():NextNumber(-100, 100)
+    }
+    table.insert(activeShaker._camShakeInstances, newInstance)
+end
+
+local function shakeCameraHellImpact()
+    if not activeShaker then return end
+    local newInstance = {
+        ["Magnitude"] = 5.6, 
+        ["Roughness"] = 3.8, 
+        ["PositionInfluence"] = Vector3.new(0.4, 0.4, 0.4),
+        ["RotationInfluence"] = Vector3.new(3.5, 2, 2),
+        ["roughMod"] = 1,
+        ["magnMod"] = 1,
+        ["fadeOutDuration"] = 1.4, 
+        ["fadeInDuration"] = 0,
+        ["sustain"] = false,
+        ["currentFadeTime"] = 1,
+        ["isContinuous"] = false,
+        ["tick"] = Random.new():NextNumber(-100, 100)
+    }
+    table.insert(activeShaker._camShakeInstances, newInstance)
+end
+
+local function startContinuousShake(magnitude, roughness, fadeIn)
+    if not activeShaker then return nil end
+    local inst = {
+        ["Magnitude"] = magnitude or 5.5,
+        ["Roughness"] = roughness or 6.0,
+        ["PositionInfluence"] = Vector3.new(0.35, 0.35, 0.35),
+        ["RotationInfluence"] = Vector3.new(3.0, 2.0, 2.0),
+        ["roughMod"] = 1,
+        ["magnMod"] = 1,
+        ["fadeOutDuration"] = 1.5,
+        ["fadeInDuration"] = fadeIn or 0.7,
+        ["sustain"] = true,
+        ["isSustained"] = true,
+        ["isContinuous"] = true,
+        ["currentFadeTime"] = 0,
+        ["tick"] = Random.new():NextNumber(-100, 100)
+    }
+    table.insert(activeShaker._camShakeInstances, inst)
+    return inst
+end
+
+local function stopContinuousShake(inst, fadeOut)
+    if inst then
+        inst.isSustained = false
+        inst.fadeOutDuration = fadeOut or 1.5
+    end
+end
+
+-- =======================================================
+-- GIAO DIỆN NÚT BẤM & KHUNG XOAY LIÊN TỤC
+-- =======================================================
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "CrucifixToggleGui"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+
+local successGui = pcall(function()
+    screenGui.Parent = CoreGui
+end)
+if not successGui then
+    screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
+end
+
+-- Frame Khung chứa bên ngoài (Asset ID: 83772539171248) - Kích thước 167x167
+local buttonFrame = Instance.new("ImageLabel")
+buttonFrame.Name = "CrucifixButtonFrame"
+buttonFrame.Size = UDim2.new(0, 167, 0, 167)
+buttonFrame.Position = UDim2.new(0.85, 0, 0.38, 0)
+buttonFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+buttonFrame.BackgroundTransparency = 1
+buttonFrame.Image = "rbxassetid://83772539171248"
+buttonFrame.Parent = screenGui
+
+-- Vòng lặp CHỈ xoay Khung ngoài
+local frameRotation = 0
+RunService.RenderStepped:Connect(function(dt)
+    frameRotation = (frameRotation + 60 * dt) % 360
+    buttonFrame.Rotation = frameRotation
+end)
+
+-- Nút bấm bên trong (Asset ID: 91869178962404) - Kích thước 91x91
+local toggleButton = Instance.new("ImageButton")
+toggleButton.Name = "CrucifixImageButton"
+toggleButton.Size = UDim2.new(0, 91, 0, 91)
+toggleButton.Position = buttonFrame.Position -- Đặt đúng vị trí tâm của Khung
+toggleButton.AnchorPoint = Vector2.new(0.5, 0.5)
+toggleButton.BackgroundTransparency = 1
+toggleButton.Image = "rbxassetid://91869178962404"
+toggleButton.ImageColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.Parent = screenGui
+
+local flashFrame = Instance.new("Frame")
+flashFrame.Name = "VIPFlashFrame"
+flashFrame.Size = UDim2.new(1, 0, 1, 0)
+flashFrame.Position = UDim2.new(0, 0, 0, 0)
+flashFrame.BackgroundColor3 = Color3.fromRGB(205, 145, 255)
+flashFrame.BackgroundTransparency = 1
+flashFrame.BorderSizePixel = 0
+flashFrame.ZIndex = 100
+flashFrame.Parent = screenGui
+
+local uiGradient = Instance.new("UIGradient")
+uiGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(240, 210, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(170, 90, 245))
+})
+uiGradient.Parent = flashFrame
+
+local function triggerVipPurpleFlash()
+    task.spawn(function()
+        flashFrame.BackgroundTransparency = 0.15
+        TweenService:Create(
+            flashFrame,
+            TweenInfo.new(0.65, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {BackgroundTransparency = 1}
+        ):Play()
+
+        local cc = Lighting:FindFirstChild("CrucifixPurpleCC") or Instance.new("ColorCorrectionEffect")
+        cc.Name = "CrucifixPurpleCC"
+        cc.TintColor = Color3.fromRGB(225, 185, 255)
+        cc.Brightness = 0.4
+        cc.Contrast = 0.25
+        cc.Parent = Lighting
+
+        local blur = Lighting:FindFirstChild("CrucifixBlur") or Instance.new("BlurEffect")
+        blur.Name = "CrucifixBlur"
+        blur.Size = 20
+        blur.Parent = Lighting
+
+        local tweenCC = TweenService:Create(
+            cc,
+            TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {Brightness = 0, Contrast = 0, TintColor = Color3.fromRGB(255, 255, 255)}
+        )
+        local tweenBlur = TweenService:Create(
+            blur,
+            TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {Size = 0}
+        )
+
+        tweenCC:Play()
+        tweenBlur:Play()
+
+        task.delay(0.65, function()
+            if cc and cc.Brightness == 0 then cc:Destroy() end
+            if blur and blur.Size == 0 then blur:Destroy() end
+        end)
+    end)
+end
+
+local function tweenModel(model, targetCFrame, duration, easingStyle, easingDirection)
+    if not model or not model.Parent then return end
+    local cframeValue = Instance.new("CFrameValue")
+    cframeValue.Value = model:GetPivot()
+    local tween = TweenService:Create(
+        cframeValue,
+        TweenInfo.new(duration, easingStyle or Enum.EasingStyle.Quad, easingDirection or Enum.EasingDirection.Out),
+        {Value = targetCFrame}
+    )
+    local connection = cframeValue.Changed:Connect(function(newCFrame)
+        if model and model.Parent then
+            model:PivotTo(newCFrame)
+        end
+    end)
+    tween:Play()
+    tween.Completed:Wait()
+    connection:Disconnect()
+    cframeValue:Destroy()
+end
+
+local function fadeOutFX(obj, duration)
+    duration = duration or 0.45
+    if not obj or not obj.Parent then return end
+
+    if obj:IsA("ParticleEmitter") or obj:IsA("Beam") or obj:IsA("Trail") then
+        local numVal = Instance.new("NumberValue")
+        local startVal = 0
+        pcall(function()
+            startVal = obj.Transparency.Keypoints[1].Value
+        end)
+        numVal.Value = startVal
+
+        local tween = TweenService:Create(
+            numVal,
+            TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {Value = 1}
+        )
+
+        local connection = numVal.Changed:Connect(function(val)
+            if obj and obj.Parent then
+                obj.Transparency = NumberSequence.new(val)
+            end
+        end)
+
+        tween:Play()
+        tween.Completed:Connect(function()
+            connection:Disconnect()
+            numVal:Destroy()
+            if obj and obj.Parent then
+                obj.Enabled = false
+            end
+        end)
+    elseif obj:IsA("Light") then
+        TweenService:Create(obj, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Brightness = 0}):Play()
+        task.delay(duration, function()
+            if obj and obj.Parent then obj.Enabled = false end
+        end)
+    elseif obj:IsA("Sound") then
+        TweenService:Create(obj, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Volume = 0}):Play()
+    elseif obj:IsA("BasePart") then
+        TweenService:Create(obj, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 1}):Play()
+    end
+end
+
+local function fadeOutFXByName(model, targetName, duration)
+    for _, obj in ipairs(model:GetDescendants()) do
+        if obj.Name == targetName then
+            fadeOutFX(obj, duration)
+        end
+    end
+end
+
+-- XỬ LÝ KHI THỰC THỂ DÍNH THÁNH GIÁ
+local function banishEntity(entity)
+    processedEntities[entity] = true
+    hasBeenUsed = true -- Đánh dấu thánh giá đã được sử dụng (chỉ dùng 1 lần)
+
+    -- Phát tín hiệu nếu là ReboundChild bị trị
+    if entity.Name == "ReboundChild" then
+        setReboundBanishedSignal(true)
+    end
+
+    -- Fade out UI Nút bấm ngay lập tức khi kích hoạt dùng thánh giá
+    task.spawn(function()
+        toggleButton.Active = false
+        local fadeInfo = TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        TweenService:Create(buttonFrame, fadeInfo, {ImageTransparency = 1}):Play()
+        TweenService:Create(toggleButton, fadeInfo, {ImageTransparency = 1}):Play()
+    end)
+
+    shakeCameraImpact()
+    triggerVipPurpleFlash()
+
+    local char = localPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+    if crucifixModel then
+        crucifixModel:Destroy()
+        crucifixModel = nil
+    end
+
+    local usedCrucifix = nil
+    local successCrucifix, loadedCrucifixes = pcall(function()
+        return game:GetObjects("rbxassetid://" .. FLYING_CRUCIFIX_ASSET_ID)
+    end)
+    if successCrucifix and loadedCrucifixes and #loadedCrucifixes > 0 then
+        usedCrucifix = loadedCrucifixes[1]
+        usedCrucifix.Name = "BanishingCrucifix"
+    end
+
+    isEquipped = false
+    targetAlpha = 0
+    setCrucifixSignal(false)
+
+    local existingSound = entity:FindFirstChild("CrucifixEntitySound", true)
+    local frozenCFrame = entity:GetPivot()
+    for _, v in ipairs(entity:GetDescendants()) do
+        if v:IsA("BaseScript") or v:IsA("TouchTransmitter") or v:IsA("BodyMover") or v:IsA("Constraint") then
+            v:Destroy()
+        elseif v:IsA("BasePart") then
+            v.Anchored = true
+            v.CanTouch = false
+            v.CanQuery = false
+            v.CanCollide = false
+            v.AssemblyLinearVelocity = Vector3.zero
+            v.AssemblyAngularVelocity = Vector3.zero
+        elseif v:IsA("Humanoid") then
+            v.WalkSpeed = 0
+        end
+    end
+
+    local hardLockConnection
+    hardLockConnection = RunService.RenderStepped:Connect(function()
+        if entity and entity.Parent then
+            entity:PivotTo(frozenCFrame)
+        else
+            if hardLockConnection then
+                hardLockConnection:Disconnect()
+                hardLockConnection = nil
+            end
+        end
+    end)
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    raycastParams.FilterDescendantsInstances = {entity, localPlayer.Character}
+    local rayResult = workspace:Raycast(frozenCFrame.Position + Vector3.new(0, 5, 0), Vector3.new(0, -100, 0), raycastParams)
+    local floorPosition = rayResult and rayResult.Position or frozenCFrame.Position
+    local lockedCFrame = CFrame.new(floorPosition + Vector3.new(0, FLOOR_OFFSET, 0)) * (frozenCFrame - frozenCFrame.Position)
+    
+    local success1, effectObjs = pcall(function()
+        return game:GetObjects("rbxassetid://" .. EFFECT_MODEL_ASSET_ID)
+    end)
+    
+    -- TẢI MODEL BỊ THÁNH GIÁ PHÙ HỢP TỪNG THỰC THỂ
+    local entityConfig = TARGET_ENTITIES[entity.Name]
+    local entityEffectAssetId = entityConfig and entityConfig.EffectId or RIPE_EFFECT_ASSET_ID
+    local success2, entityObjs = pcall(function()
+        return game:GetObjects("rbxassetid://" .. entityEffectAssetId)
+    end)
+
+    local spinConn = nil
+    local crucifixLight = nil
+    local beam, att0, att1 = nil, nil, nil
+
+    if usedCrucifix then
+        usedCrucifix.Parent = workspace
+
+        pcall(function()
+            usedCrucifix:ScaleTo(usedCrucifix:GetScale() * 1.25)
+        end)
+        local PURPLE_COLOR = Color3.fromRGB(185, 75, 255)
+
+        for _, v in ipairs(usedCrucifix:GetDescendants()) do
+            if v:IsA("WeldConstraint") or v:IsA("Weld") or v:IsA("Motor6D") then
+                v:Destroy()
+            elseif v:IsA("BasePart") then
+                v.Anchored = true
+                v.CanCollide = false
+                v.Material = Enum.Material.Neon
+                v.Color = PURPLE_COLOR
+                v.Transparency = 0
+                v.LocalTransparencyModifier = 0
+            end
+        end
+
+        local crucifixHandle = usedCrucifix.PrimaryPart or usedCrucifix:FindFirstChildWhichIsA("BasePart")
+        if crucifixHandle then
+            crucifixLight = Instance.new("PointLight")
+            crucifixLight.Name = "CrucifixPurpleLight"
+            crucifixLight.Color = PURPLE_COLOR
+            -- POINTLIGHT XOAY SÁNG GẤP ĐÔI (6)
+            crucifixLight.Brightness = 6
+            crucifixLight.Range = 18
+            crucifixLight.Shadows = true
+            crucifixLight.Parent = crucifixHandle
+
+            -- TẠO TIA NĂNG LƯỢNG KẾT NỐI ĐẾN THỰC THỂ
+            local targetPartForBeam = entity.PrimaryPart or entity:FindFirstChildWhichIsA("BasePart")
+            if targetPartForBeam then
+                att0 = Instance.new("Attachment", crucifixHandle)
+                att1 = Instance.new("Attachment", targetPartForBeam)
+
+                beam = Instance.new("Beam")
+                beam.Name = "CrucifixSoulBeam"
+                beam.Attachment0 = att0
+                beam.Attachment1 = att1
+                beam.Color = ColorSequence.new(Color3.fromRGB(220, 130, 255), Color3.fromRGB(160, 60, 255))
+                beam.Width0 = 1.2
+                beam.Width1 = 2.8
+                beam.Texture = "rbxassetid://1251850731"
+                beam.TextureSpeed = 3.5
+                beam.FaceCamera = true
+                beam.Transparency = NumberSequence.new(0.15)
+                beam.Parent = crucifixHandle
+            end
+        end
+
+        local lookDir = hrp and hrp.CFrame.LookVector or Vector3.new(0, 0, -1)
+        local flatLook = Vector3.new(lookDir.X, 0, lookDir.Z)
+        if flatLook.Magnitude == 0 then
+            flatLook = Vector3.new(0, 0, -1)
+        else
+            flatLook = flatLook.Unit
+        end
+
+        local startPos = hrp and (hrp.CFrame * CFrame.new(0, 0.5, -1.5)).Position or frozenCFrame.Position
+        local targetPos = (hrp and hrp.CFrame or frozenCFrame) * CFrame.new(0, 5, -10).Position
+
+        -- HIỆU ỨNG XOAY TỪ CHẬM ĐẾN SIÊU NHANH GIA TỐC (MAX 1200 VÒNG/S)
+        task.spawn(function()
+            local startTime = tick()
+            local flyDuration = 0.5
+            local currentYaw = 0
+            local currentSpeed = 360
+            local maxSpeed = 1200 * 360
+            local acceleration = 800000
+
+            spinConn = RunService.RenderStepped:Connect(function(dt)
+                if usedCrucifix and usedCrucifix.Parent then
+                    local elapsed = tick() - startTime
+                    local alpha = math.min(1, elapsed / flyDuration)
+                    local easedAlpha = 1 - (1 - alpha) * (1 - alpha)
+                    local currentPos = startPos:Lerp(targetPos, easedAlpha)
+                    
+                    currentSpeed = math.min(maxSpeed, currentSpeed + acceleration * dt)
+                    currentYaw = (currentYaw + currentSpeed * dt) % 360
+                    
+                    local baseUprightCFrame = CFrame.lookAt(currentPos, currentPos + flatLook, Vector3.yAxis)
+                    usedCrucifix:PivotTo(baseUprightCFrame * CFrame.Angles(0, math.rad(currentYaw), 0))
+
+                    if crucifixLight then
+                        crucifixLight.Brightness = 6 + math.sin(tick() * 18) * 3
+                    end
+                end
+            end)
+        end)
+    end
+
+    task.delay(0.12, function()
+        if hardLockConnection then
+            hardLockConnection:Disconnect()
+            hardLockConnection = nil
+        end
+        if entity and entity.Parent then
+            entity:Destroy()
+        end
+    end)
+    if success1 and effectObjs and #effectObjs > 0 then
+        local effectModel = effectObjs[1]
+        effectModel.Name = "CrucifixEffectModel"
+        effectModel:PivotTo(lockedCFrame)
+        effectModel.Parent = workspace
+
+        local thucthePart = effectModel:FindFirstChild("thucthe", true)
+
+        -- TẢI POINT LIGHT CỦA HIỆU ỨNG THÁNH GIÁ
+        local effectLight = effectModel:FindFirstChildWhichIsA("PointLight", true)
+        if not effectLight then
+            effectLight = Instance.new("PointLight")
+            effectLight.Name = "CrucifixEffectLight"
+            effectLight.Color = Color3.fromRGB(185, 75, 255)
+            effectLight.Shadows = true
+            effectLight.Parent = thucthePart or effectModel.PrimaryPart or effectModel:FindFirstChildWhichIsA("BasePart")
+        end
+        effectLight.Enabled = true
+        effectLight.Brightness = 0
+        effectLight.Range = 0
+
+        for _, obj in ipairs(effectModel:GetDescendants()) do
+            if obj:IsA("BasePart") then
+                obj.Anchored = true
+                obj.CanTouch = false
+                obj.CanQuery = false
+                obj.CanCollide = false
+            end
+        end
+        local replacementModel = nil
+        if success2 and entityObjs and #entityObjs > 0 then
+            replacementModel = entityObjs[1]
+            replacementModel.Name = entity.Name .. "_Replacement"
+            if thucthePart and thucthePart:IsA("BasePart") then
+                replacementModel:PivotTo(thucthePart.CFrame)
+                replacementModel.Parent = thucthePart
+                for _, part in ipairs(replacementModel:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.Anchored = false
+                        part.CanTouch = false
+                        part.CanQuery = false
+                        part.CanCollide = false
+                        local weld = Instance.new("WeldConstraint")
+                        weld.Part0 = thucthePart
+                        weld.Part1 = part
+                        weld.Parent = part
+                    end
+                end
+            else
+                replacementModel:PivotTo(lockedCFrame)
+                replacementModel.Parent = effectModel
+                for _, part in ipairs(replacementModel:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.Anchored = true
+                        part.CanTouch = false
+                        part.CanQuery = false
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end
+
+        local soundParent = thucthePart or effectModel.PrimaryPart or effectModel:FindFirstChildWhichIsA("BasePart")
+        if soundParent then
+            if existingSound and existingSound:IsA("Sound") then
+                existingSound.Parent = soundParent
+                if not existingSound.IsPlaying then
+                    existingSound:Play()
+                end
+            else
+                task.spawn(function()
+                    local soundOk, soundAsset = pcall(function()
+                        return GitAud(ENTITY_SOUND_URL, ENTITY_SOUND_NAME)
+                    end)
+                    if soundOk and soundAsset then
+                        local entitySound = Instance.new("Sound")
+                        entitySound.Name = "CrucifixEntitySound"
+                        entitySound.SoundId = soundAsset
+                        entitySound.Volume = 2.5
+                        entitySound.RollOffMinDistance = 50
+                        entitySound.RollOffMaxDistance = 120
+                        entitySound.RollOffMode = Enum.RollOffMode.Inverse
+                        entitySound.Parent = soundParent
+                        entitySound:Play()
+                    end
+                end)
+            end
+        end
+        task.wait(2.8)
+        local hellRumbleHandle = startContinuousShake(5.5, 6.0, 0.7)
+        task.wait(0.7) 
+
+        -- HÀM VỠ THÁNH GIÁ: TĂNG KÍCH THƯỚC GẤP 1.5 LẦN & MẢNH VĂNG MƯỢT
+        local function triggerCrucifixBreak()
+            if usedCrucifix and usedCrucifix.Parent then
+                if spinConn then
+                    spinConn:Disconnect()
+                    spinConn = nil
+                end
+
+                pcall(function()
+                    usedCrucifix:ScaleTo(usedCrucifix:GetScale() * 1.5)
+                end)
+
+                if beam then beam:Destroy() end
+                if att0 then att0:Destroy() end
+                if att1 then att1:Destroy() end
+
+                task.spawn(function()
+                    local soundOk, soundAsset = pcall(function()
+                        return GitAud(BREAK_SOUND_URL, BREAK_SOUND_NAME)
+                    end)
+                    if soundOk and soundAsset then
+                        local breakSound = Instance.new("Sound")
+                        breakSound.Name = "CrucifixBreakSound"
+                        breakSound.SoundId = soundAsset
+                        breakSound.Volume = 3.0
+                        breakSound.RollOffMinDistance = 40
+                        breakSound.RollOffMaxDistance = 150
+                        breakSound.Parent = usedCrucifix.PrimaryPart or usedCrucifix:FindFirstChildWhichIsA("BasePart") or workspace
+                        breakSound:Play()
+                    end
+                end)
+
+                triggerVipPurpleFlash()
+                shakeCameraLightImpact()
+
+                -- POINTLIGHT CỰC ĐẠI KHI VỠ GẤP ĐÔI (32)
+                if crucifixLight then
+                    TweenService:Create(crucifixLight, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Brightness = 32,
+                        Range = 40
+                    }):Play()
+                end
+
+                local parts = {}
+                local fxList = {}
+
+                for _, p in ipairs(usedCrucifix:GetDescendants()) do
+                    if p:IsA("BasePart") then
+                        table.insert(parts, p)
+                        p.Material = Enum.Material.Neon
+                        p.Color = Color3.fromRGB(230, 140, 255)
+                    elseif p:IsA("ParticleEmitter") or p:IsA("Beam") or p:IsA("Trail") or p:IsA("Light") then
+                        table.insert(fxList, p)
+                    elseif p:IsA("WeldConstraint") or p:IsA("Weld") or p:IsA("Motor6D") then
+                        p:Destroy()
+                    end
+                end
+
+                local rng = Random.new()
+                local disperseDuration = 0.25
+
+                for _, p in ipairs(parts) do
+                    p.Anchored = true
+                    p.CanCollide = false
+
+                    local offsetDir = Vector3.new(
+                        rng:NextNumber(-9, 9),
+                        rng:NextNumber(-6, 8),
+                        rng:NextNumber(-9, 9)
+                    )
+                    local targetCFrame = p.CFrame * CFrame.new(offsetDir) * CFrame.Angles(
+                        math.rad(rng:NextNumber(-540, 540)),
+                        math.rad(rng:NextNumber(-540, 540)),
+                        math.rad(rng:NextNumber(-540, 540))
+                    )
+
+                    TweenService:Create(p, TweenInfo.new(disperseDuration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                        CFrame = targetCFrame
+                    }):Play()
+                end
+
+                task.wait(disperseDuration * 0.8)
+
+                local maxFadeTime = 0.6
+                for _, p in ipairs(parts) do
+                    local individualDuration = rng:NextNumber(0.45, 0.6)
+                    task.spawn(function()
+                        TweenService:Create(p, TweenInfo.new(individualDuration, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+                            Transparency = 1
+                        }):Play()
+                    end)
+                end
+
+                for _, fx in ipairs(fxList) do
+                    local individualDuration = rng:NextNumber(0.45, 0.6)
+                    fadeOutFX(fx, individualDuration)
+                end
+
+                if crucifixLight then
+                    TweenService:Create(crucifixLight, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Brightness = 0,
+                        Range = 0
+                    }):Play()
+                end
+
+                task.wait(maxFadeTime + 0.1)
+                if usedCrucifix and usedCrucifix.Parent then
+                    usedCrucifix:Destroy()
+                end
+            end
+        end
+
+        if thucthePart and thucthePart:IsA("BasePart") then
+            -- TWEEN POINT LIGHT SÁNG GẤP ĐÔI (30) TRONG 1 GIÂY KHI THỰC THỂ BẮT ĐẦU KÉO LÊN
+            if effectLight then
+                TweenService:Create(
+                    effectLight,
+                    TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    {Brightness = 30, Range = 60}
+                ):Play()
+            end
+
+            local startCFrame = thucthePart.CFrame
+            local upCFrame = startCFrame * CFrame.new(0, 4.5, 0)
+            local downCFrame = upCFrame * CFrame.new(0, -35, 0)
+            local tween1 = TweenService:Create(
+                thucthePart,
+                TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+                {CFrame = upCFrame}
+            )
+            tween1:Play()
+            tween1.Completed:Wait()
+            stopContinuousShake(hellRumbleHandle, 0.2)
+            shakeCameraHellImpact() 
+
+            for _, obj in ipairs(effectModel:GetDescendants()) do
+                local isEntityPart = (replacementModel and (obj == replacementModel or obj:IsDescendantOf(replacementModel)))
+                if not isEntityPart then
+                    local name = obj.Name
+                    if name ~= "1" and name ~= "2" and name ~= "3" and name ~= "4" then
+                        fadeOutFX(obj, 1.2)
+                    end
+                end
+            end
+
+            local tween2 = TweenService:Create(
+                thucthePart,
+                TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+                {CFrame = downCFrame}
+            )
+            tween2:Play()
+            tween2.Completed:Wait()
+
+            if effectLight then
+                TweenService:Create(
+                    effectLight,
+                    TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    {Brightness = 0, Range = 0}
+                ):Play()
+            end
+
+            task.spawn(triggerCrucifixBreak)
+        else
+            if effectLight then
+                TweenService:Create(
+                    effectLight,
+                    TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    {Brightness = 30, Range = 60}
+                ):Play()
+            end
+
+            local upCFrame = lockedCFrame * CFrame.new(0, 4.5, 0)
+            tweenModel(effectModel, upCFrame, 0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+            stopContinuousShake(hellRumbleHandle, 0.2)
+            shakeCameraHellImpact()
+
+            for _, obj in ipairs(effectModel:GetDescendants()) do
+                local isEntityPart = (replacementModel and (obj == replacementModel or obj:IsDescendantOf(replacementModel)))
+                if not isEntityPart then
+                    local name = obj.Name
+                    if name ~= "1" and name ~= "2" and name ~= "3" and name ~= "4" then
+                        fadeOutFX(obj, 1.2)
+                    end
+                end
+            end
+
+            local downCFrame = upCFrame * CFrame.new(0, -35, 0)
+            tweenModel(effectModel, downCFrame, 1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+            if effectLight then
+                TweenService:Create(
+                    effectLight,
+                    TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    {Brightness = 0, Range = 0}
+                ):Play()
+            end
+
+            task.spawn(triggerCrucifixBreak)
+        end
+
+        task.wait(1)
+        fadeOutFXByName(effectModel, "4", 0.8)
+        task.wait(1)
+        fadeOutFXByName(effectModel, "3", 0.8)
+        task.wait(1)
+        fadeOutFXByName(effectModel, "2", 0.8)
+        task.wait(2)
+        fadeOutFXByName(effectModel, "1", 0.8)
+        task.wait(1.5)
+        if effectModel and effectModel.Parent then
+            effectModel:Destroy()
+        end
+        if screenGui and screenGui.Parent then
+            screenGui:Destroy()
+        end
+    end
+end
+
+-- VÒNG LẶP QUÉT CÁC THỰC THỂ MỤC TIÊU
+local function startEntityDetection()
+    if entityCheckConnection then return end
+    entityCheckConnection = RunService.RenderStepped:Connect(function()
+        if not isEquipped or currentAlpha < 0.3 or hasBeenUsed then return end
+        local character = localPlayer.Character
+        if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+        local hrp = character.HumanoidRootPart
+        for _, child in ipairs(workspace:GetDescendants()) do
+            if child:IsA("Model") and TARGET_ENTITIES[child.Name] and not processedEntities[child] then
+                local config = TARGET_ENTITIES[child.Name]
+                local soundRange = config.SoundRange or DEFAULT_SOUND_RANGE
+                local banishRange = config.BanishRange or DEFAULT_BANISH_RANGE
+
+                local primary = child.PrimaryPart or child:FindFirstChildWhichIsA("BasePart")
+                if primary then
+                    local distance = (hrp.Position - primary.Position).Magnitude
+                    if distance <= soundRange and not soundPlayedEntities[child] then
+                        soundPlayedEntities[child] = true
+                        task.spawn(function()
+                            local soundOk, soundAsset = pcall(function()
+                                return GitAud(ENTITY_SOUND_URL, ENTITY_SOUND_NAME)
+                            end)
+                            if soundOk and soundAsset and child and child.Parent then
+                                local targetPart = child.PrimaryPart or child:FindFirstChildWhichIsA("BasePart")
+                                if targetPart then
+                                    local entitySound = Instance.new("Sound")
+                                    entitySound.Name = "CrucifixEntitySound"
+                                    entitySound.SoundId = soundAsset
+                                    entitySound.Volume = 2.5
+                                    entitySound.RollOffMinDistance = 50
+                                    entitySound.RollOffMaxDistance = 120
+                                    entitySound.RollOffMode = Enum.RollOffMode.Inverse
+                                    entitySound.Parent = targetPart
+                                    entitySound:Play()
+                                end
+                            end
+                        end)
+                    end
+                    if distance <= banishRange and not hasBeenUsed then
+                        task.spawn(function()
+                            banishEntity(child)
+                        end)
+                    end
+                end
+            end
+        end
+    end)
+end
+
+local function stopEntityDetection()
+    if entityCheckConnection then
+        entityCheckConnection:Disconnect()
+        entityCheckConnection = nil
+    end
+end
+
+-- ANIMATION GIƠ TAY
+local function startAnimationLoop()
+    if shoulderConnection then return end
+    shoulderConnection = RunService.Stepped:Connect(function(_, deltaTime)
+        local character = localPlayer.Character
+        if not character then return end
+        local rightUpperArm = character:FindFirstChild("RightUpperArm") or character:FindFirstChild("Right Arm")
+        local shoulder = rightUpperArm and (rightUpperArm:FindFirstChild("RightShoulder") or rightUpperArm:FindFirstChild("Shoulder"))
+        if targetAlpha > currentAlpha then
+            currentAlpha = math.min(1, currentAlpha + deltaTime * ANIM_SPEED)
+        elseif targetAlpha < currentAlpha then
+            currentAlpha = math.max(0, currentAlpha - deltaTime * ANIM_SPEED)
+        end
+        if shoulder and currentAlpha > 0 then
+            local targetCFrame = CFrame.Angles(math.rad(90), 0, 0)
+            shoulder.Transform = shoulder.Transform:Lerp(targetCFrame, currentAlpha)
+        end
+        if currentAlpha <= 0 and not isEquipped then
+            if crucifixModel then
+                crucifixModel:Destroy()
+                crucifixModel = nil
+            end
+            if shoulderConnection then
+                shoulderConnection:Disconnect()
+                shoulderConnection = nil
+            end
+        end
+    end)
+end
+
+-- TRANG BỊ / CẤT THÁNH GIÁ
+local function equipCrucifix()
+    if hasBeenUsed then return end
+    local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+    local rightHand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
+    if not rightHand then return end
+
+    if not crucifixModel then
+        local success, objects = pcall(function()
+            return game:GetObjects("rbxassetid://" .. CRUCIFIX_ASSET_ID)
+        end)
+
+        if not success or not objects or #objects == 0 then
+            warn("[Crucifix] Không thể tải Model!")
+            return
+        end
+
+        crucifixModel = objects[1]
+        crucifixModel.Name = "CustomCrucifix"
+
+        local handle = crucifixModel.PrimaryPart or crucifixModel:FindFirstChildWhichIsA("BasePart")
+        if not handle then
+            for _, v in ipairs(crucifixModel:GetDescendants()) do
+                if v:IsA("BasePart") then
+                    handle = v
+                    break
+                end
+            end
+        end
+
+        if handle then
+            crucifixModel.PrimaryPart = handle
+            local offsetCFrame = rightHand.CFrame * CFrame.new(0, -0.2, -0.9) * CFrame.Angles(math.rad(-90), 0, 0)
+            crucifixModel:PivotTo(offsetCFrame)
+
+            for _, part in ipairs(crucifixModel:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.LocalTransparencyModifier = 0
+                    if part.Transparency >= 1 and part ~= handle then
+                        part.Transparency = 0
+                    end
+                    part.CanCollide = false
+                    part.Anchored = false
+
+                    if part ~= handle then
+                        local existingWeld = part:FindFirstChildWhichIsA("WeldConstraint") or part:FindFirstChildWhichIsA("Weld")
+                        if not existingWeld then
+                            local w = Instance.new("WeldConstraint")
+                            w.Part0 = handle
+                            w.Part1 = part
+                            w.Parent = part
+                        end
+                    end
+                end
+            end
+
+            local handWeld = Instance.new("WeldConstraint")
+            handWeld.Name = "HandWeld"
+            handWeld.Part0 = rightHand
+            handWeld.Part1 = handle
+            handWeld.Parent = handle
+        end
+
+        crucifixModel.Parent = character
+    end
+
+    targetAlpha = 1
+    setCrucifixSignal(true)
+    startAnimationLoop()
+    startEntityDetection()
+end
+
+local function unequipCrucifix()
+    targetAlpha = 0
+    setCrucifixSignal(false)
+    stopEntityDetection()
+end
+
+toggleButton.MouseButton1Click:Connect(function()
+    if hasBeenUsed then return end
+    isEquipped = not isEquipped
+
+    if isEquipped then
+        equipCrucifix()
+    else
+        unequipCrucifix()
+    end
+end)

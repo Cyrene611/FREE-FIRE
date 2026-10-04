@@ -1,0 +1,348 @@
+-- ====================================================================
+-- THE REAL PRESSURE STAMINA UI (FULL SPRITESHEET REPLICA) + MOBILE BUTTON
+-- EXECUTOR COMPATIBLE VERSION (LEFT ALT KEYBIND & UPDATED SPEED)
+-- ====================================================================
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local playerGui = player:WaitForChild("PlayerGui")
+local IsPC = UserInputService.KeyboardEnabled
+
+-- ====================================================================
+-- KHỞI TẠO TÍN HIỆU TOÀN CỤC CHO EXECUTOR (GETGENV)
+-- ====================================================================
+getgenv().DisableSprint = false   -- Tín hiệu 1: Bật true để cấm Sprint
+getgenv().HighRiskSprint = false  -- Tín hiệu 2: Bật true để Buff x1.25 tốc độ, x2 thời gian, stamina = 0 -> chết
+
+-- ====================================================================
+-- HÀM GIẾT NGƯỜI CHƠI KHI HẾT STAMINA TRONG CHẾ ĐỘ BUFF
+-- ====================================================================
+local function killOneShot()
+    local damageRemote = ReplicatedStorage:FindFirstChild("LocalDamage", true) or ReplicatedStorage:FindFirstChild("ChangeHealth", true)
+    
+    if damageRemote and damageRemote:IsA("RemoteEvent") then
+        damageRemote:FireServer(1000, "SittingItOut", 1, nil)
+        damageRemote:FireServer("Damage", 1000)
+        print("ngol")
+    else
+        print("đéo được")
+    end
+end
+
+-- 1. KHỞI TẠO VÀ NHÂN BẢN GIAO DIỆN GỐC TỪ GAME
+local mainGui = playerGui:WaitForChild("Main")
+local healthBarOriginal = mainGui:FindFirstChild("Health") or mainGui:FindFirstChild("Health", true)
+if not healthBarOriginal then
+	warn("❌ [Stamina Error]: Không tìm thấy thanh Health gốc của Pressure!")
+	return
+end
+
+-- Tự động dọn dẹp bản sao cũ nếu có để tránh lỗi chồng chéo giao diện
+local oldStamina = mainGui:FindFirstChild("Stamina", true)
+if oldStamina then
+	oldStamina:Destroy()
+end
+
+local staminaBar = healthBarOriginal:Clone()
+staminaBar.Name = "Stamina"
+staminaBar.Size = UDim2.new(0.200000003, 0, 0.100000001, 0)
+staminaBar.Parent = healthBarOriginal.Parent
+staminaBar.Visible = true
+
+local BASE_POS = UDim2.new(0.119999997, 0, 0.992489278, 0)
+staminaBar.Position = BASE_POS
+
+local baseHeight = healthBarOriginal.AbsoluteSize.Y
+local function UpdatePosition()
+	local extra = healthBarOriginal.AbsoluteSize.Y - baseHeight
+	staminaBar.Position = UDim2.new(
+		BASE_POS.X.Scale,
+		BASE_POS.X.Offset,
+		BASE_POS.Y.Scale,
+		BASE_POS.Y.Offset + extra
+	)
+end
+UpdatePosition()
+healthBarOriginal:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdatePosition)
+
+local staminaImageLabel = staminaBar:FindFirstChild("ImageLabel", true)
+local staminaSkull = staminaBar:FindFirstChild("Skull", true)
+local originalHealthColor = Color3.fromRGB(255,255,255)
+if staminaImageLabel then
+	originalHealthColor = staminaImageLabel.ImageColor3
+end
+
+local textLabel = staminaBar:FindFirstChild("TextLabel", true)
+if textLabel and textLabel:IsA("TextLabel") then
+	textLabel.Visible = false
+end
+
+local customImageLabel = Instance.new("ImageLabel")
+customImageLabel.Name = "Sprint"
+customImageLabel.Image = "rbxassetid://91944970238173"
+customImageLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+customImageLabel.Size = UDim2.new(0.7, 1, 0.7, 1)
+customImageLabel.AnchorPoint = Vector2.new(0.5,0.5)
+customImageLabel.ImageColor3 = Color3.fromRGB(185,215,255)
+customImageLabel.BackgroundTransparency = 1
+customImageLabel.ZIndex = 4
+
+if staminaImageLabel then
+	customImageLabel.Parent = staminaImageLabel
+else
+	customImageLabel.Parent = staminaBar
+end
+
+local mobileControls = mainGui:FindFirstChild("BaseControls", true) or mainGui:FindFirstChild("Controls", true)
+local mobileSprintButton
+if mobileControls then
+	local crouchButton = mobileControls:FindFirstChild("Crouch", true)
+	if crouchButton then
+		local old = mobileControls:FindFirstChild("Sprint")
+		if old then
+			old:Destroy()
+		end
+		mobileSprintButton = crouchButton:Clone()
+		mobileSprintButton.Name = "Sprint"
+		mobileSprintButton.Position = UDim2.new(0.699999988,0,-0.400000006,0)
+		mobileSprintButton.Size = UDim2.new(0.893999994,0,0.600000024,0)
+		local icon = mobileSprintButton:FindFirstChild("Icon", true)
+		if icon then
+			icon.Image = "rbxassetid://91944970238173"
+		end
+		local text = mobileSprintButton:FindFirstChild("TextLabel", true)
+		if text then
+			text.Text = "Sprint"
+		end
+		mobileSprintButton.Parent = crouchButton.Parent
+		mobileSprintButton.Visible = not IsPC
+	end
+end
+
+-- ====================================================================
+-- CẤU HÌNH THÔNG SỐ VÀ TOÀN BỘ LOGIC HỆ THỐNG
+-- ====================================================================
+local Config = {
+	MaxStamina = 100,
+	CurrentStamina = 100,
+	IsSprinting = false,
+	Exhausted = false,
+	Tired = false,
+	TimeSinceStopped = 0,
+	NormalSpeed = 14.5, -- Cập nhật tốc độ bình thường: 14.5
+	SprintSpeed = 20,   -- Cập nhật tốc độ sprint: 20
+	TiredSpeed = 9,
+	SavedNormalFOV = camera.FieldOfView,
+	FOVIncrease = 15,
+}
+
+local humanoid = nil
+local rootPart = nil
+local fovTween = nil
+local BaseGameSpeed = 14.5 -- Tốc độ nền mặc định
+local AnimationSpeedMultiplier = 1.5
+
+-- Tối ưu RaycastParams chống va chạm tường
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local function updatePOV(targetFOV)
+	if fovTween then fovTween:Cancel() end
+	fovTween = TweenService:Create(camera, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FieldOfView = targetFOV })
+	fovTween:Play()
+end
+
+local function UpdateAnimationSpeed(multiplier)
+	if not humanoid then return end
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then return end
+	for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+		track:AdjustSpeed(multiplier)
+	end
+end
+
+local function StopSprint()
+	if Config.IsSprinting then
+		Config.IsSprinting = false
+		UpdateAnimationSpeed(1)
+		Config.TimeSinceStopped = tick()
+		updatePOV(Config.SavedNormalFOV)
+	end
+end
+
+local function updateStaminaUI(targetStamina)
+	local max = Config.MaxStamina
+	local current = math.clamp(targetStamina, 0, max)
+	Config.CurrentStamina = current
+
+	local v9 = (max - current) / 20
+	local v10 = math.floor(v9)
+	local v11 = (max - current - v10 * 20) / 5
+	local v12 = math.floor(v11)
+
+	if staminaImageLabel then
+		staminaImageLabel.ImageRectOffset = Vector2.new(v12 * 205, v10 * 205)
+	end
+
+	local targetColor = Color3.fromRGB(130, 35, 35):Lerp(originalHealthColor, current / max)
+
+	if not Config.Exhausted then
+		if staminaImageLabel then staminaImageLabel.ImageColor3 = targetColor end
+		if staminaSkull then staminaSkull.ImageColor3 = targetColor end
+		if customImageLabel then customImageLabel.ImageColor3 = targetColor end
+	end
+
+	if current <= 0 then
+		Config.Exhausted = true
+		local exhaustedColor = Color3.fromRGB(80, 80, 80)
+		if staminaImageLabel then staminaImageLabel.ImageColor3 = exhaustedColor end
+		if staminaSkull then staminaSkull.ImageColor3 = exhaustedColor end
+		if customImageLabel then customImageLabel.ImageColor3 = exhaustedColor end
+
+		if Config.IsSprinting then
+			StopSprint()
+			Config.Tired = true
+		end
+
+		-- NẾU BẬT TÍN HIỆU 2 KHI HẾT STAMINA -> GIẾT NGƯỜI CHƠI
+		if getgenv().HighRiskSprint then
+			killOneShot()
+		end
+	else
+		if current > (max * 0.75) then
+			Config.Exhausted = false
+			if staminaImageLabel then staminaImageLabel.ImageColor3 = targetColor end
+			if staminaSkull then staminaSkull.ImageColor3 = targetColor end
+			if customImageLabel then customImageLabel.ImageColor3 = targetColor end
+		end
+	end
+end
+
+local function onCharacterAdded(char)
+	humanoid = char:WaitForChild("Humanoid")
+	rootPart = char:WaitForChild("HumanoidRootPart")
+	BaseGameSpeed = humanoid.WalkSpeed
+
+	humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+		if not Config.IsSprinting then
+			BaseGameSpeed = humanoid.WalkSpeed
+		end
+	end)
+
+	updateStaminaUI(Config.MaxStamina)
+
+	humanoid:GetPropertyChangedSignal("MoveDirection"):Connect(function()
+		if humanoid.MoveDirection.Magnitude == 0 and Config.IsSprinting then
+			StopSprint()
+		end
+	end)
+end
+
+if player.Character then onCharacterAdded(player.Character) end
+player.CharacterAdded:Connect(onCharacterAdded)
+
+local function StartSprint()
+	-- Không cho phép Sprint nếu bị Cấm
+	if getgenv().DisableSprint then return end
+
+	if not Config.Exhausted and not Config.Tired and humanoid and humanoid.MoveDirection.Magnitude > 0 then
+		Config.SavedNormalFOV = camera.FieldOfView
+		Config.IsSprinting = true
+		UpdateAnimationSpeed(AnimationSpeedMultiplier)
+		updatePOV(Config.SavedNormalFOV + Config.FOVIncrease)
+	end
+end
+
+-- BẮT SỰ KIỆN PHÍM BẤM PC (ĐỔI SANG LEFT ALT)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed or not IsPC then return end
+	if input.KeyCode == Enum.KeyCode.LeftAlt then
+		if Config.IsSprinting then
+			StopSprint()
+		else
+			StartSprint()
+		end
+	end
+end)
+
+if mobileSprintButton then
+	mobileSprintButton.MouseButton1Down:Connect(function()
+		if Config.IsSprinting then
+			StopSprint()
+		else
+			StartSprint()
+		end
+	end)
+end
+
+-- ====================================================================
+-- VÒNG LẶP RENDER
+-- ====================================================================
+RunService.RenderStepped:Connect(function(deltaTime)
+	-- Bị cấm Sprint mà đang Sprint -> Tắt ngay
+	if getgenv().DisableSprint and Config.IsSprinting then
+		StopSprint()
+	end
+
+	if humanoid and rootPart and humanoid.Parent and player.Character then
+		local isAnchored = rootPart.Anchored
+		local isSeated = (humanoid:GetState() == Enum.HumanoidStateType.Seated)
+
+		if not Config.IsSprinting then
+			BaseGameSpeed = humanoid.WalkSpeed
+		elseif humanoid.WalkSpeed > BaseGameSpeed then
+			BaseGameSpeed = humanoid.WalkSpeed
+		end
+
+		local targetSpeed = BaseGameSpeed
+
+		if Config.IsSprinting and not Config.Tired then
+			-- Tốc độ cơ bản khi Sprint = 20 (chênh lệch 5.5 so với 14.5)
+			local bonusSpeed = 5.5
+			if getgenv().HighRiskSprint then
+				targetSpeed = (BaseGameSpeed + bonusSpeed) * 1.25
+			else
+				targetSpeed = BaseGameSpeed + bonusSpeed
+			end
+		elseif Config.Tired then
+			targetSpeed = Config.TiredSpeed
+		end
+
+		if humanoid.MoveDirection.Magnitude > 0 and humanoid.WalkSpeed > 0 and not isAnchored and not isSeated then
+			local currentGameSpeed = humanoid.WalkSpeed
+			local speedDifference = targetSpeed - currentGameSpeed
+
+			if math.abs(speedDifference) > 0.05 then
+				local moveVector = humanoid.MoveDirection
+				local microMove = moveVector * (speedDifference * deltaTime)
+
+				-- KIỂM TRA XUYÊN TƯỜNG BẰNG RAYCAST
+				rayParams.FilterDescendantsInstances = {player.Character}
+				local rayOrigin = rootPart.Position
+				local rayDirection = moveVector * (microMove.Magnitude + 1.2)
+				local rayHit = workspace:Raycast(rayOrigin, rayDirection, rayParams)
+
+				if not rayHit then
+					rootPart.CFrame = rootPart.CFrame + Vector3.new(microMove.X, 0, microMove.Z)
+				end
+			end
+		end
+	end
+
+	if Config.Tired and (tick() - Config.TimeSinceStopped > 3) then
+		Config.Tired = false
+	end
+
+	-- Tiêu hao / Hồi phục thể lực
+	if Config.IsSprinting and humanoid and humanoid.MoveDirection.Magnitude > 0 and not Config.Tired then
+		local drainRate = getgenv().HighRiskSprint and 4.5 or 9
+		updateStaminaUI(Config.CurrentStamina - drainRate * deltaTime)
+	elseif (tick() - Config.TimeSinceStopped > 1.5) and not Config.IsSprinting and Config.CurrentStamina < Config.MaxStamina then
+		updateStaminaUI(Config.CurrentStamina + 12 * deltaTime)
+	end
+end)

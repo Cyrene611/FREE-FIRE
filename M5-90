@@ -9,6 +9,33 @@ local REACTION_TIME = 0.142
 local LP = Players.LocalPlayer
 local PlayerGui = LP:WaitForChild("PlayerGui")
 
+-- =================================================================
+-- HÀM KIỂM TRA THÁNH GIÁ (CUSTOMCRUCIFIX)
+-- =================================================================
+local function checkHoldingCrucifix()
+	local charactersFolder = workspace:FindFirstChild("Characters")
+	
+	-- 1. Quét trong workspace.Characters
+	if charactersFolder then
+		for _, item in ipairs(charactersFolder:GetDescendants()) do
+			if item.Name:lower() == "customcrucifix" then
+				return true
+			end
+		end
+	end
+	
+	-- 2. Quét dự phòng trong Character hiện tại của Player
+	if LP and LP.Character then
+		for _, item in ipairs(LP.Character:GetDescendants()) do
+			if item.Name:lower() == "customcrucifix" then
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
 -- 1. TẠO HOẶC LẤY SCREENGUI ĐẢM BẢO HIỂN THỊ TRÊN CÙNG (GỐC SCRIPT 2)
 local ScreenGui = PlayerGui:FindFirstChild("A90_JumpscareGui") or Instance.new("ScreenGui")
 ScreenGui.Name = "A90_JumpscareGui"
@@ -428,27 +455,63 @@ local function A90()
 			if angryRenderConn then angryRenderConn:Disconnect() end
 			if angryGlitch then angryGlitch.Stop() end
 
-			local ReplicatedStorage = game:GetService("ReplicatedStorage") 
-			task.spawn(function() 
-				local damageRemote = ReplicatedStorage:FindFirstChild("LocalDamage", true) or ReplicatedStorage:FindFirstChild("ChangeHealth", true) 
-				if damageRemote and damageRemote:IsA("RemoteEvent") then 
-					damageRemote:FireServer(50, "SittingItOut", 1, nil) 
-					damageRemote:FireServer("Damage", 50) 
-				end 
-			end) 
+			--------------------------------------------------------------------
+			-- KIỂM TRA THÁNH GIÁ VÀ XỬ LÝ KẾT QUẢ
+			--------------------------------------------------------------------
+			local isHoldingCrucifix = checkHoldingCrucifix()
 
-			task.spawn(function() playBiteEffect(15) end)
+			if isHoldingCrucifix then
+				-- TẮT MỌI UI VÀ HIỆU ỨNG MÀN HÌNH
+				UI.Visible = false
+				if UI:FindFirstChild("FaceAngry") then UI.FaceAngry.Visible = false end
+				if UI:FindFirstChild("Static") then UI.Static.Visible = false end
+				if UI:FindFirstChild("Static2") then UI.Static2.Visible = false end
+				stopIconObj.Visible = false
 
-			task.wait(0.1) 
-			if UI:FindFirstChild("FaceAngry") then UI.FaceAngry.Visible = false end
-			UI.BackgroundColor3 = Color3.new(1, 1, 1) 
-			if UI:FindFirstChild("Static") then UI.Static.ImageTransparency = 1 end
-			if UI:FindFirstChild("Static2") then UI.Static2.ImageTransparency = 1 end
-			task.wait(0.066) 
-			UI.BackgroundColor3 = Color3.new(1, 0, 0) 
-			task.wait(0.066) 
-			UI.BackgroundColor3 = Color3.new(0, 0, 0) 
-			task.wait(0.066) 
+				-- TẠO MODEL A90 CHỨA PART TÀNG HÌNH TRƯỚC MẶT NGƯỜI CHƠI 12 STUDS
+				local pChar = LP.Character
+				if pChar and pChar:FindFirstChild("HumanoidRootPart") then
+					local hrp = pChar.HumanoidRootPart
+					
+					local a90Model = Instance.new("Model")
+					a90Model.Name = "A90"
+
+					local invisPart = Instance.new("Part")
+					invisPart.Name = "HumanoidRootPart"
+					invisPart.Size = Vector3.new(2, 2, 2)
+					invisPart.Transparency = 1
+					invisPart.CanCollide = false
+					invisPart.Anchored = true
+					invisPart.CFrame = hrp.CFrame * CFrame.new(0, 0, -12)
+					invisPart.Parent = a90Model
+
+					a90Model.PrimaryPart = invisPart
+					a90Model.Parent = workspace
+				end
+			else
+				-- KHÔNG CẦM THÁNH GIÁ: TRỪ MÁU VÀ PHÁT HIỆU ỨNG MÁU/SHAKE
+				local ReplicatedStorage = game:GetService("ReplicatedStorage") 
+				task.spawn(function() 
+					local damageRemote = ReplicatedStorage:FindFirstChild("LocalDamage", true) or ReplicatedStorage:FindFirstChild("ChangeHealth", true) 
+					if damageRemote and damageRemote:IsA("RemoteEvent") then 
+						damageRemote:FireServer(50, "SittingItOut", 1, nil) 
+						damageRemote:FireServer("Damage", 50) 
+					end 
+				end) 
+
+				task.spawn(function() playBiteEffect(15) end)
+
+				task.wait(0.1) 
+				if UI:FindFirstChild("FaceAngry") then UI.FaceAngry.Visible = false end
+				UI.BackgroundColor3 = Color3.new(1, 1, 1) 
+				if UI:FindFirstChild("Static") then UI.Static.ImageTransparency = 1 end
+				if UI:FindFirstChild("Static2") then UI.Static2.ImageTransparency = 1 end
+				task.wait(0.066) 
+				UI.BackgroundColor3 = Color3.new(1, 0, 0) 
+				task.wait(0.066) 
+				UI.BackgroundColor3 = Color3.new(0, 0, 0) 
+				task.wait(0.066) 
+			end
 		else 
 			-- NÉ THÀNH CÔNG
 			UI.Visible = true 

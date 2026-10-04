@@ -1,0 +1,254 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Load Module Interactions.Base chuẩn Pressure
+local InteractionsBase = require(ReplicatedStorage:WaitForChild("Interactions"):WaitForChild("Base"))
+
+local localPlayer = Players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+
+-- ======= HÀM HIỂN THỊ PHỤ ĐỀ CHUẨN PRESSURE =======
+local function Subtitle(text, duration)
+    duration = duration or 3
+    
+    local success = pcall(function()
+        local SubtitlesModule = require(localPlayer.PlayerGui.Main.Client.MainClient.SubTitles)
+        SubtitlesModule.new(text, duration, 100, false):Show()
+    end)
+    
+    if not success then
+        local remote = ReplicatedStorage:FindFirstChild("SubTitles", true) or ReplicatedStorage:FindFirstChild("Subtitle", true)
+        if remote then
+            local conn = getconnections and getconnections(remote.OnClientEvent)[1]
+            if conn and conn.Function then
+                pcall(conn.Function, text, duration, 100, false)
+            end
+        end
+    end
+end
+
+-- 1. Tìm spawn point (DrawerSpawn / DeskSpawn) trong phòng hiện tại
+local function getSpawnInCurrentRoom()
+    local gameplayFolder = Workspace:FindFirstChild("GameplayFolder")
+    local roomsFolder = gameplayFolder and gameplayFolder:FindFirstChild("Rooms")
+    
+    if not roomsFolder then
+        warn("Không tìm thấy 'GameplayFolder.Rooms'!")
+        return nil
+    end
+
+    local playerPos = hrp.Position
+    local currentRoom = nil
+    local shortestDist = math.huge
+
+    for _, room in ipairs(roomsFolder:GetChildren()) do
+        if room:IsA("Model") then
+            local roomCFrame = room:GetBoundingBox()
+            local dist = (roomCFrame.Position - playerPos).Magnitude
+            if dist < shortestDist then
+                shortestDist = dist
+                currentRoom = room
+            end
+        end
+    end
+
+    if not currentRoom then return nil end
+
+    local candidateSpawns = {}
+    for _, obj in ipairs(currentRoom:GetDescendants()) do
+        if obj:IsA("BasePart") and (obj.Name == "DrawerSpawn" or obj.Name == "DeskSpawn") then
+            table.insert(candidateSpawns, obj)
+        end
+    end
+
+    -- Nếu phòng hiện tại không có spawn, quét toàn bộ các phòng khác
+    if #candidateSpawns == 0 then
+        for _, room in ipairs(roomsFolder:GetChildren()) do
+            for _, obj in ipairs(room:GetDescendants()) do
+                if obj:IsA("BasePart") and (obj.Name == "DrawerSpawn" or obj.Name == "DeskSpawn") then
+                    table.insert(candidateSpawns, obj)
+                end
+            end
+        end
+    end
+
+    if #candidateSpawns == 0 then return nil end
+    return candidateSpawns[math.random(1, #candidateSpawns)]
+end
+
+local chosenSpawn = getSpawnInCurrentRoom()
+if not chosenSpawn then
+    warn("Không tìm thấy DrawerSpawn hoặc DeskSpawn nào!")
+    return
+end
+
+-- 2. Load Model bằng game:GetObjects
+local modelId = "113179121672519"
+local objects = game:GetObjects("rbxassetid://" .. modelId)
+local rawObject = objects and objects[1]
+
+if not rawObject then
+    warn("Không load được Model!")
+    return
+end
+
+local model
+if rawObject:IsA("Model") then
+    model = rawObject
+else
+    model = Instance.new("Model")
+    rawObject.Parent = model
+end
+
+model.Parent = Workspace
+
+local primaryPart = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+if not primaryPart then return end
+model.PrimaryPart = primaryPart
+
+-- Tối ưu Physics & Weld các part phụ
+for _, part in ipairs(model:GetDescendants()) do
+    if part:IsA("BasePart") then
+        part.CanCollide = false
+        part.Anchored = false
+        if part ~= primaryPart then
+            local innerWeld = Instance.new("WeldConstraint")
+            innerWeld.Part0 = primaryPart
+            innerWeld.Part1 = part
+            innerWeld.Parent = primaryPart
+        end
+    end
+end
+
+-- Đèn tím
+local light1 = Instance.new("PointLight")
+light1.Color = Color3.fromRGB(170, 0, 255)
+light1.Brightness = 3
+light1.Range = 15
+light1.Shadows = false
+light1.Parent = primaryPart
+
+local light2 = Instance.new("PointLight")
+light2.Color = Color3.fromRGB(170, 0, 255)
+light2.Brightness = 99
+light2.Range = 1.5
+light2.Parent = primaryPart
+
+-- 3. Xử lý vị trí & Weld
+local connection
+if chosenSpawn.Name == "DrawerSpawn" then
+    -- Nằm xuống
+    model:PivotTo(chosenSpawn.CFrame * CFrame.Angles(math.rad(-90), 0, 0))
+
+    local spawnWeld = Instance.new("WeldConstraint")
+    spawnWeld.Part0 = chosenSpawn
+    spawnWeld.Part1 = primaryPart
+    spawnWeld.Parent = primaryPart
+
+elseif chosenSpawn.Name == "DeskSpawn" then
+    -- Cao hơn 1.8 studs, xoay & dập dềnh
+    local heightOffset = 1.8
+    local baseOffsetCFrame = CFrame.new(0, heightOffset, 0)
+    
+    model:PivotTo(chosenSpawn.CFrame * baseOffsetCFrame)
+
+    local spawnWeld = Instance.new("Weld")
+    spawnWeld.Part0 = chosenSpawn
+    spawnWeld.Part1 = primaryPart
+    spawnWeld.C0 = baseOffsetCFrame
+    spawnWeld.C1 = CFrame.new()
+    spawnWeld.Parent = primaryPart
+
+    local timeElapsed = 0
+    local floatSpeed = 3
+    local floatHeight = 0.35
+    local spinSpeed = 30
+
+    connection = RunService.Heartbeat:Connect(function(dt)
+        if not model or not model.Parent or not spawnWeld or not spawnWeld.Parent then
+            if connection then connection:Disconnect() end
+            return
+        end
+
+        timeElapsed = timeElapsed + dt
+        local yOffset = heightOffset + math.sin(timeElapsed * floatSpeed) * floatHeight
+        local rotation = math.rad(timeElapsed * spinSpeed)
+
+        spawnWeld.C0 = CFrame.new(0, yOffset, 0) * CFrame.Angles(0, rotation, 0)
+    end)
+end
+
+--------------------------------------------------------------------------------
+-- 4. SCRIPT TƯƠNG TÁC CUSTOM (PRESSURE UI + CHẠY PHỤ ĐỀ TÍM CÁCH NHAU 3S)
+--------------------------------------------------------------------------------
+local crateModel = model
+local rootPart = primaryPart
+
+local prompt = Instance.new("ProximityPrompt")
+prompt.ActionText = "Crucifix?"
+prompt.ObjectText = ""
+prompt.MaxActivationDistance = 10
+prompt.RequiresLineOfSight = false
+prompt.Style = Enum.ProximityPromptStyle.Custom
+prompt.Parent = rootPart
+
+-- Tạo Highlight Tím chuẩn Occluded
+local highlightEffect = Instance.new("Highlight")
+highlightEffect.Name = "InteractionHighlight"
+highlightEffect.Adornee = crateModel
+highlightEffect.FillColor = Color3.fromRGB(170, 85, 255)
+highlightEffect.OutlineColor = Color3.fromRGB(200, 100, 255)
+highlightEffect.FillTransparency = 0.9
+highlightEffect.OutlineTransparency = 0
+highlightEffect.DepthMode = Enum.HighlightDepthMode.Occluded
+highlightEffect.Enabled = false
+highlightEffect.Parent = crateModel
+
+-- Khởi tạo tương tác chuẩn Pressure thông qua Interactions.Base
+local interactionObj = InteractionsBase.new(crateModel)
+if interactionObj then
+    interactionObj.Proxy = prompt
+    interactionObj.HighLightPart = rootPart
+    interactionObj.DisplayName = "Crucifix?"
+    
+    -- Tự động bật Highlight tím khi lại gần
+    interactionObj.PromptShownFunction = function()
+        highlightEffect.Enabled = true
+    end
+    
+    -- Tự động tắt Highlight tím khi ra xa
+    interactionObj.PromptHideFunction = function()
+        highlightEffect.Enabled = false
+    end
+    
+    interactionObj.Interaction = function(player)
+        if connection then
+            connection:Disconnect()
+        end
+        if model and model.Parent then
+            model:Destroy()
+        end
+
+        -- Chạy Phụ đề màu tím tuần tự cách nhau 3 giây
+        task.spawn(function()
+            local purpleTag = '<font color="rgb(170, 85, 255)">'
+            local closeTag = '</font>'
+
+            Subtitle(purpleTag .. "You grab the crucifix." .. closeTag, 3)
+            task.wait(3)
+            Subtitle(purpleTag .. 'Stamped right across the back: "Made in China."' .. closeTag, 3)
+            task.wait(3)
+            Subtitle(purpleTag .. "Typical—this holy relic only works on custom entities anyway." .. closeTag, 3)
+        end)
+
+        -- Kích hoạt script Github
+        task.spawn(function()
+            loadstring(game:HttpGet("https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/Thanhgiahwhwhhwhwhwhw"))()
+        end)
+    end
+    
+    interactionObj:Start()
+end

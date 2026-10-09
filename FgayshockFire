@@ -1,6 +1,6 @@
---// Dừng script cũ nếu đang chạy
+--// Dừng script cũ nếu đang chạy (bao gồm cả các bản thể đã đổi tên thành soc)
 for _, v in pairs(workspace:GetChildren()) do
-	if v.Name == "HungryEntity_Instance" or v.Name == "HungryEntity_Instance_2" then
+	if v.Name == "HungryEntity_Instance" or v.Name == "HungryEntity_Instance_2" or v.Name == "soc" then
 		v:Destroy()
 	end
 end
@@ -19,12 +19,39 @@ local root = character:WaitForChild("HumanoidRootPart")
 local humanoid = character:WaitForChild("Humanoid")
 local camera = workspace.CurrentCamera
 
--- HÀM PHÁT ÂM THANH ĐỚP TỰ TẠO NGAY LÚC ĐỚP (KHÔNG BỊ DEBRIS XÓA SỚM)
+-- =================================================================
+-- HÀM KIỂM TRA THÁNH GIÁ (CUSTOMCRUCIFIX)
+-- =================================================================
+local function checkHoldingCrucifix()
+	local charactersFolder = workspace:FindFirstChild("Characters")
+	
+	-- 1. Quét trong workspace.Characters
+	if charactersFolder then
+		for _, item in ipairs(charactersFolder:GetDescendants()) do
+			if item.Name:lower() == "customcrucifix" then
+				return true
+			end
+		end
+	end
+	
+	-- 2. Quét dự phòng trong Character hiện tại của Player
+	if player and player.Character then
+		for _, item in ipairs(player.Character:GetDescendants()) do
+			if item.Name:lower() == "customcrucifix" then
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
+-- HÀM PHÁT ÂM THANH ĐỚP TỰ TẠO NGAY LÚC ĐỚP
 local function playMaxBiteSound()
 	local sound = Instance.new("Sound")
 	sound.SoundId = "rbxassetid://109823585841978"
 	sound.PlaybackSpeed = 0.85
-	sound.Volume = 8
+	sound.Volume = 0.75
 	sound.Parent = camera
 	
 	sound:Play()
@@ -125,7 +152,7 @@ end
 -- HÀM XỬ LÝ ÂM THANH 3D CHO ENTITY
 local function setup3DSound(sound, forcedVolume)
 	if sound and sound:IsA("Sound") then
-		sound.Volume = forcedVolume or 2
+		sound.Volume = forcedVolume or 0.75
 		sound.RollOffMinDistance = 5
 		sound.RollOffMaxDistance = 1000
 		sound.RollOffMode = Enum.RollOffMode.Linear
@@ -181,6 +208,7 @@ local function SetupEntityLogic(entity, primary, ambience, prepare, isSecondEnti
 		return lookDir:Dot(dir) > 0.5
 	end
 
+	-- HÀM CHO THỰC THỂ BIẾN MẤT (TẮT VA CHẠM + CHUI XUỐNG ĐẤT NHANH CHÓNG)
 	local function DespawnEntity()
 		if state == "dead" then return end
 		state = "dead"
@@ -188,16 +216,17 @@ local function SetupEntityLogic(entity, primary, ambience, prepare, isSecondEnti
 		ambience:Stop()
 		prepare:Stop()
 
+		-- Tắt va chạm ngay lập tức
+		for _, v in pairs(entity:GetDescendants()) do
+			if v:IsA("BasePart") then
+				v.CanCollide = false
+			end
+		end
+
 		local baseCF = primary.CFrame
 
-		-- Nhảy lên nhẹ và rơi xuống từ từ
-		local jumpUp = TweenService:Create(primary, TweenInfo.new(0.35, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { CFrame = baseCF * CFrame.new(0, 3, 0) })
-		jumpUp:Play()
-		jumpUp.Completed:Wait()
-
-		task.wait(0.1)
-
-		local fallDown = TweenService:Create(primary, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = baseCF * CFrame.new(0, -25, 0) })
+		-- Chui thẳng xuống đất siêu nhanh trong 0.25s
+		local fallDown = TweenService:Create(primary, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = baseCF * CFrame.new(0, -25, 0) })
 		fallDown:Play()
 		fallDown.Completed:Wait()
 
@@ -221,7 +250,7 @@ local function SetupEntityLogic(entity, primary, ambience, prepare, isSecondEnti
 	local function playElectricHitEffect()
 		local sound = Instance.new("Sound")
 		sound.SoundId = "rbxassetid://126172750038425"
-		sound.Volume = 3
+		sound.Volume = 0.75
 		sound.Parent = root
 		sound:Play()
 		Debris:AddItem(sound, 3)
@@ -294,14 +323,18 @@ local function SetupEntityLogic(entity, primary, ambience, prepare, isSecondEnti
 			TweenService:Create(widthVal, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Value = 1.2}):Play()
 		end
 
-		-- BẮN TIA ĐIỆN 1 & 2
+		-- BẮN TIA ĐIỆN 1 & 2 (Kiểm tra Thánh giá: không trừ máu nếu đang cầm)
 		createSmoothBeam(CFrame.new(-4.5, 0, 0))
-		dealDamage(beamDmg)
+		if not checkHoldingCrucifix() then
+			dealDamage(beamDmg)
+		end
 		playElectricHitEffect()
 
 		task.wait(0.4)
 		createSmoothBeam(CFrame.new(4.5, 0, 0))
-		dealDamage(beamDmg)
+		if not checkHoldingCrucifix() then
+			dealDamage(beamDmg)
+		end
 		playElectricHitEffect()
 
 		task.wait(0.4)
@@ -319,12 +352,20 @@ local function SetupEntityLogic(entity, primary, ambience, prepare, isSecondEnti
 		local mouthCF = primary.CFrame * CFrame.new(0, 1.5, -2)
 		smoothMoveTo(root, mouthCF, 0.8)
 
-		-- PHÁT ÂM THANH ĐỚP TỰ TẠO VÀ HIỆU ỨNG
+		-- PHÁT ÂM THANH ĐỚP TỰ TẠO
 		playMaxBiteSound()
-		triggerBiteScreenEffect()
-		task.spawn(function()
-			dealDamage(biteDmg)
-		end)
+		
+		-- XỬ LÝ LÚC ĐỚP: KIỂM TRA THÁNH GIÁ
+		if checkHoldingCrucifix() then
+			-- Cầm Thánh giá: Đổi tên model thành "soc", KHÔNG làm mờ màn hình, KHÔNG trừ máu
+			entity.Name = "soc"
+		else
+			-- Không cầm Thánh giá: Phát hiệu ứng mờ màn hình + trừ máu
+			triggerBiteScreenEffect()
+			task.spawn(function()
+				dealDamage(biteDmg)
+			end)
+		end
 
 		root.Anchored = false
 
@@ -351,7 +392,6 @@ local function SetupEntityLogic(entity, primary, ambience, prepare, isSecondEnti
 			TweenService:Create(wv, TweenInfo.new(1.0, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Value = 0}):Play()
 		end
 
-		-- ĐỢI ĐÚNG 1 GIÂY (THỰC THỂ Ở LẠI VÀ TIA ĐIỆN THU HẸP DẦN)
 		task.wait(1.0)
 
 		-- DỌN DẸP BEAM
@@ -359,7 +399,7 @@ local function SetupEntityLogic(entity, primary, ambience, prepare, isSecondEnti
 		for _, att in ipairs(atts) do att:Destroy() end
 		if playerAtt then playerAtt:Destroy() end
 
-		-- THỰC THỂ NHẢY VÀ RƠI XUỐNG TỪ TỪ
+		-- THỰC THỂ BIẾN MẤT
 		DespawnEntity()
 
 		task.wait(0.4)
@@ -435,12 +475,12 @@ SpawnSecondEntity = function()
 	local ooga2 = entity2:FindFirstChild("OOGA BOOGAAAA", true)
 
 	for _, obj in pairs(entity2:GetDescendants()) do
-		if obj:IsA("Sound") then setup3DSound(obj, 2) end
+		if obj:IsA("Sound") then setup3DSound(obj, 0.75) end
 	end
 
 	local scream2 = (ooga2 and ooga2:FindFirstChild("HORROR SCREAM 15", true)) or entity2:FindFirstChild("HORROR SCREAM 15", true)
 	if scream2 and scream2:IsA("Sound") then
-		setup3DSound(scream2, 5)
+		setup3DSound(scream2, 0.65)
 		scream2.PlaybackSpeed = 1.25
 	end
 
@@ -448,13 +488,13 @@ SpawnSecondEntity = function()
 	ambience2.SoundId = "rbxassetid://136992416500756"
 	ambience2.PlaybackSpeed = 1.1
 	ambience2.Looped = true
-	setup3DSound(ambience2, 2.5)
+	setup3DSound(ambience2, 0.75)
 
 	local prepare2 = Instance.new("Sound", primary2)
 	prepare2.SoundId = "rbxassetid://6351509719"
 	prepare2.PlaybackSpeed = 1.4
 	prepare2.Looped = true
-	setup3DSound(prepare2, 4)
+	setup3DSound(prepare2, 0.75)
 
 	local targetCF2 = root.CFrame * CFrame.new(0, 0, -8)
 	local startCF2 = targetCF2 * CFrame.new(0, -6, 0)
@@ -508,20 +548,20 @@ end
 primary.Anchored = true
 
 for _, obj in pairs(entity:GetDescendants()) do
-	if obj:IsA("Sound") then setup3DSound(obj, 2) end
+	if obj:IsA("Sound") then setup3DSound(obj, 0.75) end
 end
 
 local ambience = Instance.new("Sound", primary)
 ambience.SoundId = "rbxassetid://136992416500756"
 ambience.PlaybackSpeed = 1
 ambience.Looped = true
-setup3DSound(ambience, 2)
+setup3DSound(ambience, 0.75)
 
 local prepare = Instance.new("Sound", primary)
 prepare.SoundId = "rbxassetid://6351509719"
 prepare.PlaybackSpeed = 1.2
 prepare.Looped = true
-setup3DSound(prepare, 4)
+setup3DSound(prepare, 0.75)
 
 local targetCFrame = root.CFrame * CFrame.new(0, 0, -8)
 local startCFrame = targetCFrame * CFrame.new(0, -6, 0)

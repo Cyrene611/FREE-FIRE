@@ -157,7 +157,7 @@ local function TriggerSilenceJumpscareUI()
 end
 
 -- ----------------------------------------------------------------------------
--- 1. MULTIPLAYER SEED SYSTEM
+-- 1. MULTIPLAYER SEED SYSTEM & SYNCED TIMERS
 -- ----------------------------------------------------------------------------
 local function GetServerSeed(): number
     local id = game.JobId
@@ -171,6 +171,10 @@ end
 
 local SERVER_SEED = GetServerSeed()
 local globalRng = Random.new(SERVER_SEED)
+local shockerRng = Random.new(SERVER_SEED + 777111)
+local a90Rng = Random.new(SERVER_SEED + 999333)
+local ripperRng = Random.new(SERVER_SEED + 555222)
+
 local deerLordDoor = globalRng:NextInteger(42, 49)
 local firstOpenerDoor = globalRng:NextInteger(7, 11)
 
@@ -211,7 +215,7 @@ local MAX_CRUCIFIX = 5
 
 local frostbiteSpawnedNaturally = false
 local globalLockUntilDoor = 0
-local ripperTimer = os.clock() + math.random(100, 150)
+local ripperTimer = Workspace:GetServerTimeNow() + ripperRng:NextInteger(100, 150)
 
 -- ----------------------------------------------------------------------------
 -- 3. CORE SPAWN & ATTEMPT ENGINE
@@ -398,8 +402,9 @@ end
 local function CheckNormalEntities(doorNumber: number, doorRng: Random): boolean
     local spawned = false
 
-    if os.clock() >= ripperTimer then
-        ripperTimer = os.clock() + math.random(100, 150)
+    local currentTime = Workspace:GetServerTimeNow()
+    if currentTime >= ripperTimer then
+        ripperTimer = currentTime + doorRng:NextInteger(100, 150)
         if AttemptSpawn("Ripper") then
             spawned = true
             if doorRng:NextInteger(1, 100) <= 20 then
@@ -501,22 +506,32 @@ end
 workspace.DescendantAdded:Connect(CheckAndSpawnA60Part)
 
 -- ----------------------------------------------------------------------------
--- 7. TIMER LOOPS (SHOCKER & A-90 STANDALONE)
+-- 7. TIMER LOOPS (SHOCKER & A-90 STANDALONE - SYNCED MULTIPLAYER)
 -- ----------------------------------------------------------------------------
+local nextShockerTime = Workspace:GetServerTimeNow() + shockerRng:NextInteger(50, 65)
 task.spawn(function()
     while true do
-        task.wait(math.random(50, 65))
-        if currentDoor > 6 and currentDoor > 7 and currentDoor >= globalLockUntilDoor then 
-            AttemptSpawn("Shocker") 
+        task.wait(1)
+        local now = Workspace:GetServerTimeNow()
+        if now >= nextShockerTime then
+            nextShockerTime = now + shockerRng:NextInteger(50, 65)
+            if currentDoor > 6 and currentDoor > 7 and currentDoor >= globalLockUntilDoor then 
+                AttemptSpawn("Shocker") 
+            end
         end
     end
 end)
 
+local nextA90Time = Workspace:GetServerTimeNow() + a90Rng:NextInteger(80, 90)
 task.spawn(function()
     while true do
-        task.wait(math.random(80, 90))
-        if currentDoor > 50 and currentDoor >= globalLockUntilDoor then
-            AttemptSpawn("A-90")
+        task.wait(1)
+        local now = Workspace:GetServerTimeNow()
+        if now >= nextA90Time then
+            nextA90Time = now + a90Rng:NextInteger(80, 90)
+            if currentDoor > 50 and currentDoor >= globalLockUntilDoor then
+                AttemptSpawn("A-90")
+            end
         end
     end
 end)
@@ -571,6 +586,9 @@ local function ProcessMessage(senderName: string, messageText: string)
     elseif cleanMsg == "/deerlord" then
         lastAdminCmdTime = now
         SpawnEntity("Deer Lord", true)
+    elseif cleanMsg == "/spawncrucifix" or cleanMsg == "/crucifix" then
+        lastAdminCmdTime = now
+        SpawnCrucifix()
     end
 end
 

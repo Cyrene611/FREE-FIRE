@@ -55,8 +55,8 @@ local isPhase2Active = false
 local p2Connection = nil
 local p2PartDetectorConnection = nil
 
--- Cấu hình Phase 3
-local MAX_DOORS_PHASE_3 = 10
+-- Cấu hình Phase 3 (Đã chỉnh thành 5 cửa)
+local MAX_DOORS_PHASE_3 = 5
 local phase3DoorsLeft = MAX_DOORS_PHASE_3
 local isPhase3Active = false
 local p3Connection = nil
@@ -696,7 +696,7 @@ local function createPhase3UI()
         label.Size = UDim2.new(1, 0, sliceCount, 0)
         label.Position = UDim2.new(0, 0, -(i - 1), 0)
         label.BackgroundTransparency = 1
-        label.Text = "A-" .. phase3DoorsLeft
+        label.Text = "B-" .. phase3DoorsLeft
         label.TextColor3 = Color3.fromRGB(200, 0, 0)
         label.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
         label.TextScaled = true
@@ -977,4 +977,3 @@ task.spawn(function()
         startPhase1DoorListener()
     end
 end)
-

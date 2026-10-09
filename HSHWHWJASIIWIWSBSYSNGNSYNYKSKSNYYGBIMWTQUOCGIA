@@ -1,0 +1,762 @@
+-- ============================================================================
+-- MASTER EXECUTOR SCRIPT - PRESSURE HARDCORE MODE v11.1 (PERFECT STABLE ENGINE)
+-- ============================================================================
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local TextChatService = game:GetService("TextChatService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+local ContentProvider = game:GetService("ContentProvider")
+
+-- ----------------------------------------------------------------------------
+-- SUBTITLE & AUDIO SYSTEM
+-- ----------------------------------------------------------------------------
+local function Subtitle(text, duration)
+    duration = duration or 3
+    
+    local success = pcall(function()
+        local SubtitlesModule = require(LocalPlayer.PlayerGui.Main.Client.MainClient.SubTitles)
+        SubtitlesModule.new(text, duration, 100, false):Show()
+    end)
+    
+    if not success then
+        pcall(function()
+            local conn = getconnections and getconnections(ReplicatedStorage.OnClientEvent)[1]
+            if conn and conn.Function then
+                pcall(conn.Function, text, duration, 100, false)
+            end
+        end)
+    end
+end
+
+local function GitAud(soundlink, filename)
+    local url = soundlink
+    local FileName = filename
+    if not isfile(FileName..".mp3") then
+        writefile(FileName..".mp3", game:HttpGet(url))
+    end
+    return (getcustomasset or getsynasset)(FileName..".mp3")
+end
+
+local spawnMessages = {
+    "find a locker",
+    "HIDE",
+    "hide if you dont want to die"
+}
+
+-- ----------------------------------------------------------------------------
+-- SILENCE STATIC JUMPSCARE UI SCRIPT
+-- ----------------------------------------------------------------------------
+local function TriggerSilenceJumpscareUI()
+    task.spawn(function()
+        local parentGui = (gethui and gethui()) or CoreGui or LocalPlayer:WaitForChild("PlayerGui")
+
+        if parentGui:FindFirstChild("RealStaticJumpscareGui") then
+            parentGui.RealStaticJumpscareGui:Destroy()
+        end
+
+        local screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "RealStaticJumpscareGui"
+        screenGui.ResetOnSpawn = false
+        screenGui.IgnoreGuiInset = true
+        screenGui.DisplayOrder = 999999
+        screenGui.Parent = parentGui
+
+        local sound = Instance.new("Sound")
+        sound.SoundId = "rbxassetid://133083688567844"
+        sound.Volume = 2
+        sound.Looped = true
+        sound.Parent = screenGui
+        sound:Play()
+
+        local imageLabel = Instance.new("ImageLabel")
+        imageLabel.Name = "StaticImage"
+        imageLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+        imageLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+        imageLabel.Size = UDim2.new(1, 0, 1, 0)
+        imageLabel.BackgroundTransparency = 1
+        imageLabel.Image = "rbxassetid://108887843031197"
+        imageLabel.ImageTransparency = 1
+        imageLabel.ScaleType = Enum.ScaleType.Stretch
+        imageLabel.Parent = screenGui
+
+        pcall(function()
+            ContentProvider:PreloadAsync({imageLabel})
+        end)
+
+        local imgSize = imageLabel.ContentImageSize
+        local w = (imgSize.X > 0 and imgSize.X) or 1024
+        local h = (imgSize.Y > 0 and imgSize.Y) or 1024
+
+        local flipFunctions = {
+            function()
+                imageLabel.ImageRectOffset = Vector2.new(0, 0)
+                imageLabel.ImageRectSize = Vector2.new(w, h)
+            end,
+            function()
+                imageLabel.ImageRectOffset = Vector2.new(w, 0)
+                imageLabel.ImageRectSize = Vector2.new(-w, h)
+            end,
+            function()
+                imageLabel.ImageRectOffset = Vector2.new(0, h)
+                imageLabel.ImageRectSize = Vector2.new(w, -h)
+            end,
+            function()
+                imageLabel.ImageRectOffset = Vector2.new(w, h)
+                imageLabel.ImageRectSize = Vector2.new(-w, -h)
+            end
+        }
+
+        local isGlitching = true
+        local baseTransparency = 1
+
+        task.spawn(function()
+            while isGlitching do
+                local applyFlip = flipFunctions[math.random(1, #flipFunctions)]
+                applyFlip()
+                
+                local offsetX = math.random(-3, 3)
+                local offsetY = math.random(-3, 3)
+                imageLabel.Position = UDim2.new(0.5, offsetX, 0.5, offsetY)
+                
+                local brightness = math.random(235, 255)
+                imageLabel.ImageColor3 = Color3.fromRGB(brightness, brightness, brightness)
+                
+                local noiseAlpha = math.random(0, 3) / 100
+                imageLabel.ImageTransparency = math.clamp(baseTransparency + noiseAlpha, 0, 1)
+                
+                RunService.RenderStepped:Wait()
+            end
+        end)
+
+        local startTime = tick()
+        while tick() - startTime < 0.15 do
+            baseTransparency = 1 - ((tick() - startTime) / 0.15)
+            task.wait()
+        end
+        baseTransparency = 0
+
+        task.wait(0.5)
+
+        startTime = tick()
+        while tick() - startTime < 2.0 do
+            local progress = (tick() - startTime) / 2.0
+            baseTransparency = progress
+            sound.Volume = 2 * (1 - progress)
+            task.wait()
+        end
+        baseTransparency = 1
+        sound.Volume = 0
+
+        isGlitching = false
+        screenGui:Destroy()
+    end)
+end
+
+-- ----------------------------------------------------------------------------
+-- 1. MULTIPLAYER SEED SYSTEM
+-- ----------------------------------------------------------------------------
+local function GetServerSeed(): number
+    local id = game.JobId
+    if not id or id == "" then return 987654321 end
+    local hash = 0
+    for i = 1, #id do
+        hash = (hash * 33 + string.byte(id, i)) % 2147483647
+    end
+    return hash
+end
+
+local SERVER_SEED = GetServerSeed()
+local globalRng = Random.new(SERVER_SEED)
+local deerLordDoor = globalRng:NextInteger(42, 49)
+local firstOpenerDoor = globalRng:NextInteger(7, 11)
+
+-- DROUGHT / PITY TRACKER
+local doorsSinceLastSpawn = 0
+local droughtTarget = globalRng:NextInteger(6, 8)
+
+-- ----------------------------------------------------------------------------
+-- 2. PHÂN LOẠI THỰC THỂ & TRẠNG THÁI GAME
+-- ----------------------------------------------------------------------------
+local ENTITY_REGISTRY = {
+    ["A-60"]      = "https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/Saubaysaubay.txt",
+    ["Frostbite"] = "https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/Lanhdenchet",
+    ["Deer Lord"] = "https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/Dear%20Lord.txt",
+    ["A-120"]     = "https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/A-124",
+    ["Silence"]   = "https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/FImlangFire",
+    ["Rebound"]   = "https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/FreboundFire",
+    ["Conductor"] = "https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/CH3COOH",
+    ["Cease"]     = "https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/C3453",
+    ["Ripper"]    = "https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/FKexexacfire",
+    ["Shocker"]   = "https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/FgayshockFire",
+    ["A-90"]      = "https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/M5-90",
+}
+
+-- STATE TRACKING
+local entityCooldowns = {} 
+local entityBoosts = {}    
+
+local currentDoor = 0
+local silenceSpawnCount = 0
+local a120SpawnCount = 0
+local crucifixSpawnCount = 0
+local hasOpenerSpawned = false
+
+local MAX_SILENCE = 3
+local MAX_A120 = 3
+local MAX_CRUCIFIX = 5
+
+local frostbiteSpawnedNaturally = false
+local globalLockUntilDoor = 0
+local ripperTimer = os.clock() + math.random(100, 150)
+
+-- ----------------------------------------------------------------------------
+-- 3. CORE SPAWN & ATTEMPT ENGINE
+-- ----------------------------------------------------------------------------
+local function SpawnEntity(name: string, force: boolean?)
+    if not force and currentDoor <= 6 then return end
+
+    local url = ENTITY_REGISTRY[name]
+    if not url then return end
+
+    if name == "Silence" then
+        TriggerSilenceJumpscareUI()
+    end
+
+    if name == "A-60" then
+        globalLockUntilDoor = currentDoor + 20
+    elseif name == "Frostbite" then
+        globalLockUntilDoor = currentDoor + 15
+    end
+
+    task.spawn(function()
+        local success = pcall(function()
+            loadstring(game:HttpGet(url))()
+        end)
+        
+        if success then
+            print(name .. " loaded")
+        else
+            print(name .. " load failed")
+        end
+    end)
+end
+
+local function SpawnCrucifix()
+    task.spawn(function()
+        local success = pcall(function()
+            loadstring(game:HttpGet("https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/Giaspawn"))()
+        end)
+        
+        if success then
+            print("Crucifix loaded")
+        else
+            print("Crucifix load failed")
+        end
+    end)
+end
+
+local function AttemptSpawn(name: string): boolean
+    if currentDoor <= 6 then return false end
+    if currentDoor < globalLockUntilDoor then return false end
+
+    local cd = entityCooldowns[name] or 0
+    if cd > 0 then
+        entityBoosts[name] = true
+        return false
+    else
+        SpawnEntity(name, false)
+        entityCooldowns[name] = 5
+        entityBoosts[name] = false
+        return true
+    end
+end
+
+local function GetOpenerEntity(doorRng: Random): string
+    local roll = doorRng:NextInteger(1, 100)
+    if roll <= 50 then
+        return "Ripper"
+    elseif roll <= 67 then
+        return "Conductor"
+    elseif roll <= 84 then
+        return "Rebound"
+    else
+        return "Cease"
+    end
+end
+
+-- ----------------------------------------------------------------------------
+-- 4. DROUGHT / PITY EVENT ENGINE (6 - 8 CỬA TRỐNG)
+-- ----------------------------------------------------------------------------
+local function TriggerDroughtEvent(doorRng: Random)
+    if currentDoor <= 6 or currentDoor < globalLockUntilDoor then return end
+    
+    local roll = doorRng:NextInteger(1, 100)
+    
+    if roll <= 30 then
+        local singlePool = {"Ripper", "Rebound", "Cease", "Silence", "A-120", "Conductor"}
+        local chosen = singlePool[doorRng:NextInteger(1, #singlePool)]
+        AttemptSpawn(chosen)
+    else
+        local comboPool = {"Ripper", "Rebound", "Cease", "Silence", "A-120"}
+        
+        local idx1 = doorRng:NextInteger(1, #comboPool)
+        local ent1 = comboPool[idx1]
+        table.remove(comboPool, idx1)
+        
+        local idx2 = doorRng:NextInteger(1, #comboPool)
+        local ent2 = comboPool[idx2]
+        
+        if AttemptSpawn(ent1) then
+            task.delay(1.5, function()
+                AttemptSpawn(ent2)
+            end)
+        end
+    end
+end
+
+-- ----------------------------------------------------------------------------
+-- 5. SPAWN CHECKERS
+-- ----------------------------------------------------------------------------
+local function UpdateDoorCooldowns()
+    for name, cd in pairs(entityCooldowns) do
+        if cd > 0 then
+            entityCooldowns[name] = cd - 1
+        end
+    end
+end
+
+local function CheckGrandEncounters(doorNumber: number): boolean
+    if doorNumber == 80 then
+        if not frostbiteSpawnedNaturally then
+            if AttemptSpawn("Frostbite") then
+                return true
+            end
+        end
+    end
+    
+    if doorNumber == deerLordDoor then
+        if AttemptSpawn("Deer Lord") then
+            return true
+        end
+    end
+    
+    return false
+end
+
+local function CheckSpecialEntities(doorNumber: number, doorRng: Random): boolean
+    local a60Base = 300
+    local a60Denom = entityBoosts["A-60"] and math.max(1, math.floor(a60Base / 3)) or a60Base
+    if doorNumber > 12 and doorRng:NextInteger(1, a60Denom) == 1 then
+        if AttemptSpawn("A-60") then
+            return true
+        end
+    end
+    
+    local fbBase = 200
+    local fbDenom = entityBoosts["Frostbite"] and math.max(1, math.floor(fbBase / 3)) or fbBase
+    if doorNumber > 15 and doorRng:NextInteger(1, fbDenom) == 1 then
+        if AttemptSpawn("Frostbite") then
+            frostbiteSpawnedNaturally = true
+            return true
+        end
+    end
+
+    if doorNumber > 10 and silenceSpawnCount < MAX_SILENCE then
+        local forcePity = (doorNumber >= 65 and silenceSpawnCount == 0)
+        local silDenom = entityBoosts["Silence"] and 18 or 55
+        if doorRng:NextInteger(1, silDenom) == 1 or forcePity then
+            if AttemptSpawn("Silence") then
+                silenceSpawnCount += 1
+                return true
+            end
+        end
+    end
+    
+    if doorNumber > 10 and a120SpawnCount < MAX_A120 then
+        local forcePity = (doorNumber >= 70 and a120SpawnCount == 0)
+        local a120Denom = entityBoosts["A-120"] and 22 or 65
+        if doorRng:NextInteger(1, a120Denom) == 1 or forcePity then
+            if AttemptSpawn("A-120") then
+                a120SpawnCount += 1
+                if doorRng:NextInteger(1, 100) <= 65 then
+                    task.delay(1, function()
+                        AttemptSpawn("A-90")
+                    end)
+                end
+                return true
+            end
+        end
+    end
+    
+    return false
+end
+
+local function CheckNormalEntities(doorNumber: number, doorRng: Random): boolean
+    local spawned = false
+
+    if os.clock() >= ripperTimer then
+        ripperTimer = os.clock() + math.random(100, 150)
+        if AttemptSpawn("Ripper") then
+            spawned = true
+            if doorRng:NextInteger(1, 100) <= 20 then
+                task.delay(0.5, function() AttemptSpawn("Cease") end)
+            end
+        end
+    end
+
+    if not spawned then
+        local ceaseDenom = entityBoosts["Cease"] and 5 or 15
+        if doorRng:NextInteger(1, ceaseDenom) == 1 then
+            if AttemptSpawn("Cease") then spawned = true end
+        end
+    end
+
+    if not spawned then
+        local reboundDenom = entityBoosts["Rebound"] and 6 or 18
+        if doorRng:NextInteger(1, reboundDenom) == 1 then
+            if AttemptSpawn("Rebound") then spawned = true end
+        end
+    end
+
+    if not spawned then
+        local conductorDenom = entityBoosts["Conductor"] and 8 or 25
+        if doorRng:NextInteger(1, conductorDenom) == 1 then
+            if AttemptSpawn("Conductor") then spawned = true end
+        end
+    end
+
+    return spawned
+end
+
+local function OnDoorOpened(doorNumber: number)
+    print(doorNumber)
+    
+    if doorNumber == 1 then
+        task.spawn(function()
+            Subtitle("Hardcore Initiated.", 3)
+            task.wait(3)
+            Subtitle("Hope You Enjoy The Mode.", 3)
+            task.wait(2)
+            Subtitle("Good Luck!", 3)
+        end)
+    end
+    
+    UpdateDoorCooldowns()
+    
+    local doorRng = Random.new(SERVER_SEED + doorNumber * 99999)
+    if crucifixSpawnCount < MAX_CRUCIFIX and doorRng:NextInteger(1, 67) == 1 then
+        crucifixSpawnCount += 1
+        SpawnCrucifix()
+    end
+
+    if doorNumber <= 6 then 
+        return 
+    end
+    
+    if not hasOpenerSpawned and doorNumber >= 7 then
+        if doorNumber == firstOpenerDoor or doorNumber == 11 then
+            hasOpenerSpawned = true
+            local openerEntity = GetOpenerEntity(doorRng)
+            if AttemptSpawn(openerEntity) then
+                doorsSinceLastSpawn = 0
+                droughtTarget = globalRng:NextInteger(6, 8)
+            end
+            return
+        end
+    end
+
+    local entitySpawned = CheckGrandEncounters(doorNumber) 
+                       or CheckSpecialEntities(doorNumber, doorRng) 
+                       or CheckNormalEntities(doorNumber, doorRng)
+
+    if entitySpawned then
+        doorsSinceLastSpawn = 0
+        droughtTarget = globalRng:NextInteger(6, 8)
+    else
+        doorsSinceLastSpawn += 1
+        
+        if doorsSinceLastSpawn >= droughtTarget then
+            TriggerDroughtEvent(doorRng)
+            doorsSinceLastSpawn = 0
+            droughtTarget = globalRng:NextInteger(6, 8)
+        end
+    end
+end
+
+-- ----------------------------------------------------------------------------
+-- 6. DETECT PART "A60" WITH PARTICLE EMITTER & AUTO SPAWN (BYPASSES SAFE ZONE)
+-- ----------------------------------------------------------------------------
+local function CheckAndSpawnA60Part(object)
+    if object and object.Name == "A60" then
+        if object:FindFirstChildWhichIsA("ParticleEmitter", true) then
+            SpawnEntity("A-60", true)
+        end
+    end
+end
+
+workspace.DescendantAdded:Connect(CheckAndSpawnA60Part)
+
+-- ----------------------------------------------------------------------------
+-- 7. TIMER LOOPS (SHOCKER & A-90 STANDALONE)
+-- ----------------------------------------------------------------------------
+task.spawn(function()
+    while true do
+        task.wait(math.random(50, 65))
+        if currentDoor > 6 and currentDoor > 7 and currentDoor >= globalLockUntilDoor then 
+            AttemptSpawn("Shocker") 
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(math.random(80, 90))
+        if currentDoor > 50 and currentDoor >= globalLockUntilDoor then
+            AttemptSpawn("A-90")
+        end
+    end
+end)
+
+-- ----------------------------------------------------------------------------
+-- 8. ADMIN COMMANDS (FULL REGISTRY - BYPASSES SAFE ZONE)
+-- ----------------------------------------------------------------------------
+local lastAdminCmdTime = 0
+
+local function ProcessMessage(senderName: string, messageText: string)
+    if senderName ~= "PressureMode4" then return end
+    
+    local now = os.clock()
+    if now - lastAdminCmdTime < 1 then return end 
+    
+    local cleanMsg = string.lower(string.gsub(messageText, "%s+", ""))
+    
+    if cleanMsg == "/a60" or cleanMsg == "/multi" then
+        lastAdminCmdTime = now
+        SpawnEntity("A-60", true)
+    elseif cleanMsg == "/frostbite" then
+        lastAdminCmdTime = now
+        SpawnEntity("Frostbite", true)
+    elseif cleanMsg == "/duo" then
+        lastAdminCmdTime = now
+        SpawnEntity("A-60", true)
+        task.delay(1.5, function() SpawnEntity("Frostbite", true) end)
+    elseif cleanMsg == "/a120" then
+        lastAdminCmdTime = now
+        SpawnEntity("A-120", true)
+    elseif cleanMsg == "/silence" then
+        lastAdminCmdTime = now
+        SpawnEntity("Silence", true)
+    elseif cleanMsg == "/rebound" then
+        lastAdminCmdTime = now
+        SpawnEntity("Rebound", true)
+    elseif cleanMsg == "/conductor" then
+        lastAdminCmdTime = now
+        SpawnEntity("Conductor", true)
+    elseif cleanMsg == "/cease" then
+        lastAdminCmdTime = now
+        SpawnEntity("Cease", true)
+    elseif cleanMsg == "/ripper" then
+        lastAdminCmdTime = now
+        SpawnEntity("Ripper", true)
+    elseif cleanMsg == "/shocker" then
+        lastAdminCmdTime = now
+        SpawnEntity("Shocker", true)
+    elseif cleanMsg == "/a90" then
+        lastAdminCmdTime = now
+        SpawnEntity("A-90", true)
+    elseif cleanMsg == "/deerlord" then
+        lastAdminCmdTime = now
+        SpawnEntity("Deer Lord", true)
+    end
+end
+
+if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+    TextChatService.OnIncomingMessage = function(message)
+        if message.TextSource then
+            local sender = Players:GetPlayerByUserId(message.TextSource.UserId)
+            if sender then ProcessMessage(sender.Name, message.Text) end
+        end
+    end
+else
+    local function ConnectPlayerChat(plr: Player)
+        plr.Chatted:Connect(function(msg) ProcessMessage(plr.Name, msg) end)
+    end
+    for _, p in ipairs(Players:GetPlayers()) do ConnectPlayerChat(p) end
+    Players.PlayerAdded:Connect(ConnectPlayerChat)
+end
+
+-- ----------------------------------------------------------------------------
+-- 9. AUTO-LOAD UTILITIES (CRUCIFIX, ABO & SPRINT)
+-- ----------------------------------------------------------------------------
+task.spawn(function()
+    if crucifixSpawnCount < MAX_CRUCIFIX then
+        crucifixSpawnCount += 1
+        SpawnCrucifix()
+    end
+    
+    local successABO = pcall(function() 
+        loadstring(game:HttpGet("https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/ABOANDDENTIMKIEM"))() 
+    end)
+    if successABO then print("ABO & Searchlight loaded") else print("ABO & Searchlight load failed") end
+
+    local successSprint = pcall(function() 
+        loadstring(game:HttpGet("https://github.com/Cyrene611/FREE-FIRE/raw/refs/heads/main/S%E1%BB%9D%20p%E1%BB%9D%20dinh"))() 
+    end)
+    if successSprint then print("Sprint loaded") else print("Sprint load failed") end
+end)
+
+-- ----------------------------------------------------------------------------
+-- 10. AUTO-SYNC MÀU & HIỆU ỨNG ĐÈN NEON
+-- ----------------------------------------------------------------------------
+task.spawn(function()
+    local DEFAULT_MODEL_ID = "rbxassetid://97667155562465"
+    local ALT_MODEL_ID     = "rbxassetid://118890612722672"
+
+    local function isMultipleOf90(angleDeg, tol)
+        local mod = math.abs(angleDeg) % 90
+        return (mod <= tol) or (mod >= (90 - tol))
+    end
+
+    local function isDiagonalNeon(object)
+        if object.Name ~= "Neon" then 
+            return false 
+        end
+        
+        local rot = object.Orientation
+        local tol = 5
+        
+        local xAligned = isMultipleOf90(rot.X, tol)
+        local yAligned = isMultipleOf90(rot.Y, tol)
+        local zAligned = isMultipleOf90(rot.Z, tol)
+        
+        return not (xAligned and yAligned and zAligned)
+    end
+
+    local function updateModelColor(mainModel, targetColor)
+        for _, child in pairs(mainModel:GetDescendants()) do
+            if child:IsA("ParticleEmitter") then
+                child.Color = ColorSequence.new(targetColor)
+            elseif child:IsA("BasePart") or child:IsA("MeshPart") then
+                child.Color = targetColor
+            end
+        end
+    end
+
+    local function checkAndSpawn(object)
+        local successPath, path = pcall(function() return object:GetFullName() end)
+        if not successPath or not path then return end
+        
+        if path:find("%.Lights%.Neon") or path:find("%.Lights%.SmallNeon") or path:find("%.Lights%.Nec") then
+            if not object:FindFirstChild("ModelSpawned") then
+                local marker = Instance.new("BoolValue")
+                marker.Name = "ModelSpawned"
+                marker.Parent = object
+                
+                local modelToUse = DEFAULT_MODEL_ID
+                if isDiagonalNeon(object) then
+                    modelToUse = ALT_MODEL_ID
+                end
+                
+                task.spawn(function()
+                    local objects
+                    local success = pcall(function()
+                        objects = game:GetObjects(modelToUse)
+                    end)
+                    
+                    if not success or not objects or #objects == 0 then return end
+                    
+                    local mainModel = objects[1]
+                    local neonCFrame = object.CFrame
+                    
+                    if mainModel:IsA("BasePart") then
+                        mainModel.CFrame = neonCFrame
+                    elseif mainModel:IsA("Model") then
+                        mainModel:PivotTo(neonCFrame)
+                    end
+                    
+                    updateModelColor(mainModel, object.Color)
+                    mainModel.Parent = workspace
+                    
+                    local disableThread = nil
+                    
+                    local function checkNeonState()
+                        local isNeon = (object.Material == Enum.Material.Neon) and (object.Transparency < 1)
+                        
+                        if isNeon then
+                            if disableThread then
+                                task.cancel(disableThread)
+                                disableThread = nil
+                            end
+                            updateModelColor(mainModel, object.Color)
+                            if mainModel.Parent ~= workspace then
+                                mainModel.Parent = workspace
+                            end
+                        else
+                            if not disableThread then
+                                disableThread = task.delay(0.35, function()
+                                    local stillNotNeon = (object.Material ~= Enum.Material.Neon) or (object.Transparency >= 1)
+                                    if stillNotNeon then
+                                        mainModel.Parent = nil
+                                    end
+                                    disableThread = nil
+                                end)
+                            end
+                        end
+                    end
+                    
+                    object:GetPropertyChangedSignal("Material"):Connect(checkNeonState)
+                    object:GetPropertyChangedSignal("Transparency"):Connect(checkNeonState)
+                    object:GetPropertyChangedSignal("Color"):Connect(function()
+                        if object.Material == Enum.Material.Neon then
+                            updateModelColor(mainModel, object.Color)
+                        end
+                    end)
+                    
+                    object.AncestryChanged:Connect(function(_, parent)
+                        if not parent then
+                            mainModel:Destroy()
+                        end
+                    end)
+                    
+                    checkNeonState()
+                end)
+            end
+        end
+    end
+
+    local allObjects = workspace:GetDescendants()
+    for i = 1, #allObjects do
+        local object = allObjects[i]
+        if object and object:IsA("BasePart") then
+            checkAndSpawn(object)
+        end
+        if i % 100 == 0 then task.wait() end 
+    end
+
+    workspace.DescendantAdded:Connect(function(object)
+        if object:IsA("BasePart") then
+            task.defer(checkAndSpawn, object)
+        end
+    end)
+end)
+
+-- ----------------------------------------------------------------------------
+-- 11. ROOM TRACKER ENGINE
+-- ----------------------------------------------------------------------------
+local GameplayFolder = workspace:WaitForChild("GameplayFolder", 15)
+local Rooms = GameplayFolder and GameplayFolder:WaitForChild("Rooms", 15)
+
+Subtitle("Pressure Hardcore Mode has been executed successfully.", 3)
+
+if Rooms then
+    Rooms.ChildAdded:Connect(function(child)
+        if not child:IsA("Model") then return end
+        task.wait(0.2)
+        currentDoor += 1
+        OnDoorOpened(currentDoor)
+    end)
+end

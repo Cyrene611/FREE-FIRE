@@ -15,6 +15,7 @@ local SILENCE_EFFECT_ASSET_ID = "111692453970260" -- Model Silence bị thánh g
 local A90_EFFECT_ASSET_ID = "140583074618954" -- Model A-90 bị thánh giá
 local CEASE_EFFECT_ASSET_ID = "103896207986677" -- Model Ngung bị thánh giá
 local CONDUCTOR_EFFECT_ASSET_ID = "124787655540980" -- Model Conductor bị thánh giá
+local SHOCKER_EFFECT_ASSET_ID = "84574590415898" -- Model Shocker bị thánh giá
 
 local EFFECT_MODEL_ASSET_ID = "93726426819525" -- Model hiệu ứng thánh giá
 
@@ -42,7 +43,9 @@ local TARGET_ENTITIES = {
     ["A90"] = { EffectId = A90_EFFECT_ASSET_ID, SoundRange = 33, BanishRange = 30 },
     ["A-90"] = { EffectId = A90_EFFECT_ASSET_ID, SoundRange = 33, BanishRange = 30 },
     ["Ngung"] = { EffectId = CEASE_EFFECT_ASSET_ID, SoundRange = 125, BanishRange = 125 },
-    ["Conductor"] = { EffectId = CONDUCTOR_EFFECT_ASSET_ID, SoundRange = 65, BanishRange = 60 }
+    ["Conductor"] = { EffectId = CONDUCTOR_EFFECT_ASSET_ID, SoundRange = 65, BanishRange = 60 },
+    ["soc"] = { EffectId = SHOCKER_EFFECT_ASSET_ID, SoundRange = 45, BanishRange = 43 },
+    ["Shocker"] = { EffectId = SHOCKER_EFFECT_ASSET_ID, SoundRange = 45, BanishRange = 43 }
 }
 
 -- Biến quản lý trạng thái

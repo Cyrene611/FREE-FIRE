@@ -16,10 +16,12 @@ local function PreloadSound(soundlink, filename)
     end)
 end
 
--- Tải song song 3 file âm thanh của Cease
+-- Tải song song 5 file âm thanh của Cease
 PreloadSound("https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/cl.mp3", "Cease_Spawn_1")
 PreloadSound("https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/Spawn.mp3.mp3", "Cease_Spawn_2")
 PreloadSound("https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/moving.mp3.mp3", "Cease_Moving")
+PreloadSound("https://github.com/PressureMode4blabla/Pressure-stuff/raw/refs/heads/main/wind.mp3", "Cease_Wind")
+PreloadSound("https://github.com/PressureMode4blabla/Pressure-stuff/raw/refs/heads/main/detect%20.mp3", "Cease_Detect")
 
 -- =================================================================
 -- PHÁT ÂM THANH SPAWN BAN ĐẦU (KHI KÍCH HOẠT SCRIPT)
@@ -50,18 +52,18 @@ end)
 local spawnEntity = loadstring(game:HttpGet("https://raw.githubusercontent.com/cakmay227-svg/random/refs/heads/main/Pressure-Entity-Spawner"))()
 
 spawnEntity({
-    AssetId = "rbxassetid://101213140924420",
+    AssetId = "rbxassetid://103815737018708", -- Model ID mới
     EntityName = "Cease",
-    MoveSpeed = 65,
-    HitboxRadius = 40,
-    ShakeRadius = 100,
+    MoveSpeed = 255, -- Tốc độ ban đầu khi Spawn (255)
+    HitboxRadius = 1,
+    ShakeRadius = 250,
     DamageAmount = 0,    
     InstantKill = false,
     ConstantBloodSucking = false,
     DelayEachDamage = 0.1,
     
     DelayWhenSpawned = true,     
-    Delay = 0, 
+    Delay = 3.5, 
     Rebounding = false,  
     Reversed = false, 
     MinRebounds = 1,   
@@ -106,6 +108,76 @@ spawnEntity({
         local LightColor = Color3.fromRGB(130, 150, 255) 
         -- MÀU NGƯỜI CHƠI TAN BIẾN (TÔNG ĐÈN NHƯNG ĐẬM HƠN RÕ RỆT)
         local PlayerDeathColor = Color3.fromRGB(50, 80, 180) 
+
+        -- -------------------------------------------------------------
+        -- CƠ CHẾ GHÌM TỐC ĐỘ VẬT LÝ THỰC TẾ & ÂM THANH KHI GIẢM TỐC
+        -- -------------------------------------------------------------
+        task.spawn(function()
+            local originalSpeed = 255
+            local targetSpeed = 51
+            local slowdownDistance = 115
+            local speedRatio = targetSpeed / originalSpeed -- Tỷ lệ giảm tốc (51 / 255)
+            
+            local player = game:GetService("Players").LocalPlayer
+            local RunService = game:GetService("RunService")
+            
+            local lastCFrame = nil
+            local isSlowed = false
+            local speedConn
+
+            speedConn = RunService.Heartbeat:Connect(function()
+                local ceaseModel = workspace:FindFirstChild("Cease")
+                if not ceaseModel or not ceaseModel.Parent then
+                    if speedConn then speedConn:Disconnect() end
+                    return
+                end
+
+                local root = ceaseModel.PrimaryPart or ceaseModel:FindFirstChildWhichIsA("BasePart")
+                local char = player.Character
+                local pRoot = char and char:FindFirstChild("HumanoidRootPart")
+
+                if root and pRoot then
+                    local currentCFrame = root.CFrame
+                    
+                    if lastCFrame then
+                        local distToPlayer = (root.Position - pRoot.Position).Magnitude
+                        
+                        -- Kiểm tra khoảng cách 115 studs
+                        if distToPlayer <= slowdownDistance then
+                            if not isSlowed then
+                                isSlowed = true
+                                
+                                -- PHÁT ÂM THANH GIẢM TỐC (CHỈ 1 LẦN DUY NHẤT)
+                                if CachedSounds["Cease_Detect"] then
+                                    local DetectSound = Instance.new("Sound")
+                                    DetectSound.SoundId = CachedSounds["Cease_Detect"]
+                                    DetectSound.Volume = 3.7
+                                    DetectSound.RollOffMaxDistance = 300
+                                    DetectSound.RollOffMinDistance = 30
+                                    DetectSound.RollOffMode = Enum.RollOffMode.Linear
+                                    DetectSound.Parent = root
+                                    DetectSound:Play()
+                                    DetectSound.Ended:Connect(function() DetectSound:Destroy() end)
+                                end
+                            end
+                        end
+
+                        -- Khi đã vào vùng 115 studs, ghìm tốc độ di chuyển về 51
+                        if isSlowed then
+                            local deltaVec = currentCFrame.Position - lastCFrame.Position
+                            if deltaVec.Magnitude > 0.001 then
+                                local newPos = lastCFrame.Position + (deltaVec * speedRatio)
+                                local newCFrame = CFrame.new(newPos) * currentCFrame.Rotation
+                                ceaseModel:PivotTo(newCFrame)
+                                currentCFrame = newCFrame
+                            end
+                        end
+                    end
+                    
+                    lastCFrame = currentCFrame
+                end
+            end)
+        end)
 
         -- -------------------------------------------------------------
         -- 1. ĐỔI MÀU ĐÈN VÀ XỬ LÝ QUÁ TRÌNH TÍCH ĐIỆN -> NỔ VỠ ĐÈN
@@ -178,7 +250,7 @@ spawnEntity({
                     -- Âm thanh tích điện
                     local overloadSound = Instance.new("Sound")
                     overloadSound.SoundId = "rbxassetid://96734351862181"
-                    overloadSound.Volume = 0.4
+                    overloadSound.Volume = 0.27
                     overloadSound.PlaybackSpeed = 1
                     overloadSound.RollOffMaxDistance = 180
                     overloadSound.RollOffMinDistance = 20
@@ -198,9 +270,9 @@ spawnEntity({
                     })
                     tweenOverload:Play()
 
-                    -- Tween âm lượng tích điện tăng lên mức 5.0 ở giây thứ 6
+                    -- Tween âm lượng tích điện tăng lên mức 3.4 ở giây thứ 6
                     TweenService:Create(overloadSound, TweenInfo.new(6, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-                        Volume = 5.0
+                        Volume = 3.4
                     }):Play()
 
                     -- Khi còn 1s nữa sẽ nổ (ở giây thứ 6), Fade out âm thanh về 0 trong 1s
@@ -250,7 +322,7 @@ spawnEntity({
                         for _, sndId in ipairs(shatterSoundIds) do
                             local snd = Instance.new("Sound")
                             snd.SoundId = sndId
-                            snd.Volume = 0.25
+                            snd.Volume = 0.17
                             snd.PlaybackSpeed = 0.85
                             snd.RollOffMaxDistance = 80
                             snd.RollOffMinDistance = 5
@@ -390,7 +462,7 @@ spawnEntity({
         end)
 
         -- -------------------------------------------------------------
-        -- 2. GÁN ÂM THANH DI CHUYỂN CHO THỰC THỂ CEASE
+        -- 2. GÁN ÂM THANH DI CHUYỂN & ÂM THANH XA CHO THỰC THỂ CEASE
         -- -------------------------------------------------------------
         task.spawn(function()
             local entityRoot = nil
@@ -411,17 +483,35 @@ spawnEntity({
                     end
                 end
 
-                repeat task.wait() until CachedSounds["Cease_Moving"]
+                repeat task.wait() until CachedSounds["Cease_Moving"] and CachedSounds["Cease_Wind"]
                 
+                -- Âm thanh di chuyển chính (Tốc độ 1.05 + Pitch 0.8)
                 local MoveSound = Instance.new("Sound")
                 MoveSound.SoundId = CachedSounds["Cease_Moving"]
                 MoveSound.Volume = 2.5
-                MoveSound.RollOffMaxDistance = 100
+                MoveSound.PlaybackSpeed = 1.05
+                MoveSound.RollOffMaxDistance = 145
                 MoveSound.RollOffMinDistance = 15
                 MoveSound.RollOffMode = Enum.RollOffMode.Linear
                 MoveSound.Looped = true
                 MoveSound.Parent = entityRoot
+
+                local movePitchShift = Instance.new("PitchShiftSoundEffect")
+                movePitchShift.Octave = 0.8
+                movePitchShift.Parent = MoveSound
+
                 MoveSound:Play()
+
+                -- Âm thanh xa / gió (RollOffMaxDistance = 350)
+                local WindSound = Instance.new("Sound")
+                WindSound.SoundId = CachedSounds["Cease_Wind"]
+                WindSound.Volume = 2.5
+                WindSound.RollOffMaxDistance = 350
+                WindSound.RollOffMinDistance = 15
+                WindSound.RollOffMode = Enum.RollOffMode.Linear
+                WindSound.Looped = true
+                WindSound.Parent = entityRoot
+                WindSound:Play()
             end
         end)
 

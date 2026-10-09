@@ -16,8 +16,12 @@ if not Rooms then
     return
 end
 
-local BAN_THE_1 = "https://raw.githubusercontent.com/Cyrene611/-3-_-3-M0D3/refs/heads/main/Rebound%20Main"
-local BAN_THE_2 = "https://raw.githubusercontent.com/Cyrene611/-3-_-3-M0D3/refs/heads/main/Rebound%20Child"
+-- =======================================================
+-- ĐƯỜNG DẪN 3 BẢN THỂ REBOUND
+-- =======================================================
+local FIRST_REBOUND = "https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/First%20Rebound"
+local FRONT_REBOUND = "https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/Front%20Rebound"
+local BACK_REBOUND  = "https://github.com/Cyrene611/Pressure-Entity-Spawner/raw/refs/heads/main/Back%20Rebound"
 
 local MAX_SPAWNS = 4
 local ty_le = math.random(1, 100)
@@ -31,7 +35,44 @@ else
 end
 
 local currentSpawnCount = 0
+local isSpawningStopped = false -- Cờ đánh dấu ngừng spawn
+local connection
 
+-- =======================================================
+-- XỬ LÝ TÍN HIỆU REBOUND BỊ TRỊ BẰNG THÁNH GIÁ
+-- =======================================================
+local function onReboundBanished()
+    if isSpawningStopped then return end
+    isSpawningStopped = true
+    
+    -- In tín hiệu lên console theo yêu cầu
+    print("rip rebound")
+    
+    -- Hủy kết nối spawn các phòng sau
+    if connection then
+        connection:Disconnect()
+        connection = nil
+    end
+end
+
+-- Bắt tín hiệu khi model ReboundChild_Replacement xuất hiện (do script Thánh Giá tạo ra khi banish)
+workspace.DescendantAdded:Connect(function(descendant)
+    if descendant.Name == "ReboundChild_Replacement" then
+        onReboundBanished()
+    end
+end)
+
+-- Kiểm tra sẵn trường hợp Rebound đã bị trị từ trước
+for _, obj in ipairs(workspace:GetDescendants()) do
+    if obj.Name == "ReboundChild_Replacement" then
+        onReboundBanished()
+        break
+    end
+end
+
+-- =======================================================
+-- XỬ LÝ DỌN DẸP & THEO DÕI REBOUND
+-- =======================================================
 local function cleanOldEntities()
     for _, obj in ipairs(workspace:GetChildren()) do
         if obj:IsA("Model") and obj.Name == "ReboundChild" then
@@ -45,27 +86,103 @@ local function cleanOldEntities()
     end
 end
 
+-- Hàm theo dõi ReboundChild (kiểm tra không di chuyển >3s và biến mất trong 10s tiếp theo)
+local function monitorReboundChild(model)
+    task.spawn(function()
+        local primaryPart = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+        local startWait = os.clock()
+        
+        while not primaryPart and model:IsDescendantOf(workspace) and (os.clock() - startWait < 3) do
+            task.wait(0.1)
+            primaryPart = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+        end
+
+        if not primaryPart or not model:IsDescendantOf(workspace) then return end
+
+        local lastPosition = primaryPart.Position
+        local stationaryTime = 0
+        local reached3sStationary = false
+        local stationaryTimeMark = 0
+
+        while model:IsDescendantOf(workspace) do
+            task.wait(0.1)
+            if not primaryPart:IsDescendantOf(workspace) then break end
+
+            local currentPosition = primaryPart.Position
+            local moveDistance = (currentPosition - lastPosition).Magnitude
+
+            if moveDistance < 0.1 then
+                stationaryTime = stationaryTime + 0.1
+                if stationaryTime >= 3 and not reached3sStationary then
+                    reached3sStationary = true
+                    stationaryTimeMark = os.clock()
+                end
+            else
+                stationaryTime = 0
+                reached3sStationary = false
+            end
+
+            lastPosition = currentPosition
+        end
+
+        -- Nếu ReboundChild biến mất sau khi đứng yên >3s
+        if reached3sStationary then
+            local timeElapsed = os.clock() - stationaryTimeMark
+            if timeElapsed <= 10 then
+                isSpawningStopped = true
+                if connection then
+                    connection:Disconnect()
+                    connection = nil
+                end
+                warn("[THÔNG BÁO] ReboundChild đứng yên >3s và đã biến mất trong 10s -> HỦY SPAWN các bản thể sau!")
+            end
+        end
+    end)
+end
+
+-- Lắng nghe khi ReboundChild được tạo ra trong Workspace
+workspace.ChildAdded:Connect(function(child)
+    if child:IsA("Model") and child.Name == "ReboundChild" then
+        monitorReboundChild(child)
+    end
+end)
+
 local function spawnEntity(url)
+    if isSpawningStopped then return end
     cleanOldEntities()
     task.wait(0.15)
     loadstring(game:HttpGet(url))()
 end
 
-currentSpawnCount = currentSpawnCount + 1
-spawnEntity(BAN_THE_1)
+-- =======================================================
+-- TIẾN HÀNH SPAWN THEO THỨ TỰ: FIRST -> BACK -> FRONT -> BACK -> FRONT
+-- =======================================================
 
-local connection
+-- Spawn Lần 1: First Rebound
+currentSpawnCount = currentSpawnCount + 1
+spawnEntity(FIRST_REBOUND)
+
+-- Tự động spawn bản thể sau khi mở phòng mới
 connection = Rooms.ChildAdded:Connect(function(child)
+    if isSpawningStopped then return end
     if not child:IsA("Model") then return end
 
     currentSpawnCount = currentSpawnCount + 1
 
     if currentSpawnCount <= MAX_SPAWNS then
-        spawnEntity(BAN_THE_2)
+        -- Lần 2, 4 (Số chẵn): Chọn BACK REBOUND
+        -- Lần 3, 5 (Số lẻ):  Chọn FRONT REBOUND
+        if currentSpawnCount % 2 == 0 then
+            spawnEntity(BACK_REBOUND)
+        else
+            spawnEntity(FRONT_REBOUND)
+        end
     end
 
-    if currentSpawnCount >= MAX_SPAWNS then
-        connection:Disconnect()
-        connection = nil
+    if currentSpawnCount >= MAX_SPAWNS or isSpawningStopped then
+        if connection then
+            connection:Disconnect()
+            connection = nil
+        end
     end
 end)

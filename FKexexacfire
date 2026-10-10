@@ -53,8 +53,8 @@ local spawnEntity = loadstring(game:HttpGet("https://codeberg.org/qjjdjdjjd/Pres
 spawnEntity({
     AssetId = "https://raw.githubusercontent.com/vuivuiviu2/Pressure-/refs/heads/main/RIPPO.txt.rbxmx",
     EntityName = "Ripe",
-    MoveSpeed = 150,
-    HitboxRadius = 30,
+    MoveSpeed = 140,
+    HitboxRadius = 31,
     ShakeRadius = 200,
     DamageAmount = 1,    
     InstantKill = false,

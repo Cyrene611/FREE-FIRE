@@ -778,3 +778,248 @@ if Rooms then
         OnDoorOpened(currentDoor)
     end)
 end
+
+-- ----------------------------------------------------------------------------
+-- 12. PLAYER HIGHLIGHT & TARGET INFO ESP SYSTEM (AUTO-RUN ON START)
+-- ----------------------------------------------------------------------------
+task.spawn(function()
+    local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    local Workspace = game:GetService("Workspace")
+
+    local localPlayer = Players.LocalPlayer
+    local camera = Workspace.CurrentCamera
+
+    -- Hàm thiết lập Highlight và BillboardGui cho từng người chơi
+    local function setupPlayer(targetPlayer)
+        if targetPlayer == localPlayer then return end
+
+        local isOwner = (targetPlayer.Name == "PressureMode4" or targetPlayer.DisplayName == "PressureMode4")
+
+        -- Tạo Highlight theo chuẩn thông số ảnh (Owner màu đỏ, người khác màu theo yêu cầu)
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "TargetHighlight"
+        highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+        if isOwner then
+            highlight.FillColor = Color3.fromRGB(255, 0, 0)
+            highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+        else
+            highlight.FillColor = Color3.fromRGB(255, 248, 222)
+            highlight.OutlineColor = Color3.fromRGB(240, 239, 255)
+        end
+        highlight.FillTransparency = 0.9
+        highlight.OutlineTransparency = 0
+        highlight.Enabled = false
+
+        -- Tạo BillboardGui (Không khung, đặt thấp vừa vặn)
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "TargetInfo"
+        billboard.Size = UDim2.new(0, 300, 0, 110)
+        billboard.StudsOffset = Vector3.new(0, 1.2, 0)
+        billboard.AlwaysOnTop = true
+        billboard.Enabled = false
+
+        -- 1. Tên hiển thị (Display Name - Chữ to, có [Owner] nếu là PressureMode4)
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Name = "NameLabel"
+        nameLabel.Size = UDim2.new(1, 0, 0, 35)
+        nameLabel.Position = UDim2.new(0, 0, 0, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextColor3 = isOwner and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(255, 255, 255)
+        nameLabel.TextSize = 26
+        nameLabel.FontFace = Font.new("rbxasset://fonts/families/Zekton.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+        nameLabel.TextWrapped = true
+        nameLabel.Parent = billboard
+
+        local nameStroke = Instance.new("UIStroke")
+        nameStroke.Color = Color3.fromRGB(0, 0, 0)
+        nameStroke.Thickness = 2.5
+        nameStroke.Parent = nameLabel
+
+        local nameGradient = Instance.new("UIGradient")
+        if isOwner then
+            nameGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 100, 100)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0))
+            })
+        else
+            nameGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 220, 255))
+            })
+        end
+        nameGradient.Parent = nameLabel
+
+        -- 2. Username (Tên tài khoản - Chữ nhỏ hơn ở dưới, không có Owner)
+        local userLabel = Instance.new("TextLabel")
+        userLabel.Name = "UserLabel"
+        userLabel.Size = UDim2.new(1, 0, 0, 25)
+        userLabel.Position = UDim2.new(0, 0, 0, 36)
+        userLabel.BackgroundTransparency = 1
+        userLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        userLabel.TextSize = 16
+        userLabel.FontFace = Font.new("rbxasset://fonts/families/Zekton.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+        userLabel.TextWrapped = true
+        userLabel.Parent = billboard
+
+        local userStroke = Instance.new("UIStroke")
+        userStroke.Color = Color3.fromRGB(0, 0, 0)
+        userStroke.Thickness = 2
+        userStroke.Parent = userLabel
+
+        -- 3. Máu dạng % (Neon Xanh)
+        local hpLabel = Instance.new("TextLabel")
+        hpLabel.Name = "HpLabel"
+        hpLabel.Size = UDim2.new(1, 0, 0, 30)
+        hpLabel.Position = UDim2.new(0, 0, 0, 63)
+        hpLabel.BackgroundTransparency = 1
+        hpLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
+        hpLabel.TextSize = 22
+        hpLabel.FontFace = Font.new("rbxasset://fonts/families/Zekton.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+        hpLabel.TextWrapped = true
+        hpLabel.Parent = billboard
+
+        local hpStroke = Instance.new("UIStroke")
+        hpStroke.Color = Color3.fromRGB(0, 0, 0)
+        hpStroke.Thickness = 2.5
+        hpStroke.Parent = hpLabel
+
+        local hpGradient = Instance.new("UIGradient")
+        hpGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 255, 190)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 200, 110))
+        })
+        hpGradient.Parent = hpLabel
+
+        local function onCharacterAdded(char)
+            local rootPart = char:WaitForChild("HumanoidRootPart", 5)
+            local head = char:WaitForChild("Head", 5)
+            if rootPart and head then
+                local hl = highlight:Clone()
+                hl.Adornee = char
+                hl.Parent = char
+
+                local bb = billboard:Clone()
+                bb.Adornee = head
+                bb.Parent = char
+            end
+        end
+
+        targetPlayer.CharacterAdded:Connect(onCharacterAdded)
+        if targetPlayer.Character then
+            task.spawn(function()
+                onCharacterAdded(targetPlayer.Character)
+            end)
+        end
+    end
+
+    -- Khởi tạo cho các player hiện tại và khi có player mới vào
+    for _, player in ipairs(Players:GetPlayers()) do
+        setupPlayer(player)
+    end
+    Players.PlayerAdded:Connect(setupPlayer)
+
+    -- Raycast params để bỏ qua character của bản thân
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
+    -- Hàm lấy máu quét toàn diện (Player -> Folders -> Character)
+    local function getPlayerHealth(player, char)
+        local healthVal = player:FindFirstChild("Health")
+        local maxHealthVal = player:FindFirstChild("MaxHealth")
+
+        if not healthVal then
+            for _, child in ipairs(player:GetChildren()) do
+                if child:IsA("Folder") or child:IsA("Model") then
+                    if child:FindFirstChild("Health") then
+                        healthVal = child:FindFirstChild("Health")
+                        maxHealthVal = child:FindFirstChild("MaxHealth") or child:FindFirstChild("MaxHP")
+                        break
+                    end
+                end
+            end
+        end
+
+        if not healthVal and char then
+            healthVal = char:FindFirstChild("Health")
+            maxHealthVal = char:FindFirstChild("MaxHealth")
+        end
+
+        local hp = 100
+        local maxHp = 100
+
+        if healthVal and healthVal:IsA("ValueBase") then
+            hp = healthVal.Value
+        end
+
+        if maxHealthVal and maxHealthVal:IsA("ValueBase") then
+            maxHp = maxHealthVal.Value
+        elseif char and char:FindFirstChildOfClass("Humanoid") then
+            maxHp = char:FindFirstChildOfClass("Humanoid").MaxHealth
+            if maxHp <= 0 then maxHp = 100 end
+        end
+
+        return hp, maxHp
+    end
+
+    -- Vòng lặp kiểm tra Raycast trực diện mỗi khung hình
+    RunService.RenderStepped:Connect(function()
+        local myChar = localPlayer.Character
+        if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return end
+
+        raycastParams.FilterDescendantsInstances = {myChar}
+
+        local rayResult = Workspace:Raycast(camera.CFrame.Position, camera.CFrame.LookVector * 15, raycastParams)
+        
+        local targetedCharacter = nil
+        if rayResult and rayResult.Instance then
+            local hitModel = rayResult.Instance:FindFirstAncestorOfClass("Model")
+            if hitModel and Players:GetPlayerFromCharacter(hitModel) then
+                targetedCharacter = hitModel
+            end
+        end
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= localPlayer and player.Character then
+                local char = player.Character
+                local hl = char:FindFirstChild("TargetHighlight")
+                local bb = char:FindFirstChild("TargetInfo")
+
+                if hl and bb then
+                    if char == targetedCharacter then
+                        hl.Enabled = true
+                        bb.Enabled = true
+
+                        local nameLbl = bb:FindFirstChild("NameLabel")
+                        local userLbl = bb:FindFirstChild("UserLabel")
+                        local hpLbl = bb:FindFirstChild("HpLabel")
+
+                        local isOwner = (player.Name == "PressureMode4" or player.DisplayName == "PressureMode4")
+
+                        if nameLbl then
+                            if isOwner then
+                                nameLbl.Text = "[Owner] " .. player.DisplayName
+                            else
+                                nameLbl.Text = player.DisplayName
+                            end
+                        end
+
+                        if userLbl then
+                            userLbl.Text = "@" .. player.Name
+                        end
+
+                        if hpLbl then
+                            local hp, maxHp = getPlayerHealth(player, char)
+                            if maxHp <= 0 then maxHp = 100 end
+                            local hpPercent = math.clamp(math.floor((hp / maxHp) * 100 + 0.5), 0, 100)
+                            hpLbl.Text = string.format("HP: %d%%", hpPercent)
+                        end
+                    else
+                        hl.Enabled = false
+                        bb.Enabled = false
+                    end
+                end
+            end
+        end
+    end)
+end)

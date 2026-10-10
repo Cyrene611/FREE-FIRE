@@ -20,8 +20,8 @@ local SHOCKER_EFFECT_ASSET_ID = "84574590415898" -- Model Shocker bị thánh gi
 local EFFECT_MODEL_ASSET_ID = "93726426819525" -- Model hiệu ứng thánh giá
 
 -- CẤU HÌNH BÁN KÍNH MẶC ĐỊNH
-local DEFAULT_SOUND_RANGE = 45 -- Range phát âm thanh mặc định
-local DEFAULT_BANISH_RANGE = 43 -- Range thực thể bị trị mặc định
+local DEFAULT_SOUND_RANGE = 47 -- Range phát âm thanh mặc định
+local DEFAULT_BANISH_RANGE = 44 -- Range thực thể bị trị mặc định
 
 -- LINK ÂM THANH THÁNH GIÁ THỰC THỂ & THÁNH GIÁ VỠ
 local ENTITY_SOUND_URL = "https://github.com/Cyrene611/Crucifix/raw/refs/heads/main/CRISTIANO%20RONALDO%20.mp3"
@@ -35,7 +35,7 @@ local FLOOR_OFFSET = 1.32
 
 -- Danh sách thực thể mục tiêu, ID Model & Cấu hình Range riêng
 local TARGET_ENTITIES = {
-    ["Ripe"] = { EffectId = RIPE_EFFECT_ASSET_ID, SoundRange = 45, BanishRange = 43 },
+    ["Ripe"] = { EffectId = RIPE_EFFECT_ASSET_ID, SoundRange = 47, BanishRange = 45 },
     ["ReboundChild"] = { EffectId = REBOUND_EFFECT_ASSET_ID, SoundRange = 45, BanishRange = 43 },
     ["A120"] = { EffectId = A120_EFFECT_ASSET_ID, SoundRange = 33, BanishRange = 30 },
     ["A-120"] = { EffectId = A120_EFFECT_ASSET_ID, SoundRange = 33, BanishRange = 30 },

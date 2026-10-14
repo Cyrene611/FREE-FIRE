@@ -542,7 +542,7 @@ end)
 local lastAdminCmdTime = 0
 
 local function ProcessMessage(senderName: string, messageText: string)
-    if senderName ~= "PressureMode4" then return end
+    if senderName ~= "PressureMode4" and senderName ~= "Windd_ismyname" then return end
     
     local now = os.clock()
     if now - lastAdminCmdTime < 1 then return end 

@@ -541,8 +541,14 @@ end)
 -- ----------------------------------------------------------------------------
 local lastAdminCmdTime = 0
 
+local adminNames = {
+    ["PressureMode4"] = true,
+    ["vuivuiviu9"] = true,
+    ["Windd_ismyname"] = true,
+}
+
 local function ProcessMessage(senderName: string, messageText: string)
-    if senderName ~= "PressureMode4" then return end
+    if not adminNames[senderName] then return end
     
     local now = os.clock()
     if now - lastAdminCmdTime < 1 then return end 
@@ -778,4 +784,3 @@ if Rooms then
         OnDoorOpened(currentDoor)
     end)
 end
-

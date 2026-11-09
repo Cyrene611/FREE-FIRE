@@ -37,7 +37,7 @@ local shockConnection = nil
 local entityActive = false
 
 -- Cấu hình bán kính giật điện
-local ELECTRIC_RADIUS = 55
+local ELECTRIC_RADIUS = 50
 
 -- =====================================================================
 -- HÀM KIỂM TRA CHẤT LIỆU DẪN ĐIỆN (KIM LOẠI VÀ NƯỚC)
@@ -161,7 +161,7 @@ spawnEntity({
     DelayEachDamage = 0.1,
     
     DelayWhenSpawned = true,     
-    Delay = 3.5, 
+    Delay = 4.1, 
     Rebounding = false,  
     Reversed = false, 
     MinRebounds = 1,   

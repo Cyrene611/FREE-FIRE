@@ -542,7 +542,7 @@ end)
 local lastAdminCmdTime = 0
 
 local adminNames = {
-    ["PressureMode4"] = true,
+    ["vsgwef6dvv"] = true,
     ["vuivuiviu9"] = true,
     ["Windd_ismyname"] = true,
 }

@@ -54,7 +54,7 @@ local spawnEntity = loadstring(game:HttpGet("https://raw.githubusercontent.com/c
 spawnEntity({
     AssetId = "rbxassetid://103815737018708", -- Model ID mới
     EntityName = "Cease",
-    MoveSpeed = 255, -- Tốc độ ban đầu khi Spawn (255)
+    MoveSpeed = 222, -- Tốc độ ban đầu khi Spawn (255)
     HitboxRadius = 1,
     ShakeRadius = 250,
     DamageAmount = 0,    
@@ -113,8 +113,8 @@ spawnEntity({
         -- CƠ CHẾ GHÌM TỐC ĐỘ VẬT LÝ THỰC TẾ & ÂM THANH KHI GIẢM TỐC
         -- -------------------------------------------------------------
         task.spawn(function()
-            local originalSpeed = 255
-            local targetSpeed = 51
+            local originalSpeed = 222
+            local targetSpeed = 61
             local slowdownDistance = 115
             local speedRatio = targetSpeed / originalSpeed -- Tỷ lệ giảm tốc (51 / 255)
             
@@ -185,7 +185,7 @@ spawnEntity({
         task.spawn(function()
             local Config = {
                 TargetColor = LightColor, 
-                TweenTime = 0.5,                         
+                TweenTime = 0.6,                         
             }
 
             local Workspace = workspace
@@ -518,8 +518,8 @@ spawnEntity({
         -- -------------------------------------------------------------
         -- 3. CƠ CHẾ PHÁT HIỆN CHUYỂN ĐỘNG & KIỂM TRA THÁNH GIÁ (CRUCIFIX)
         -- -------------------------------------------------------------
-        local hitboxRaycast = 120   -- Hitbox 1: Tầm xa 120 (có xét cản tường)
-        local hitboxWallbang = 40    -- Hitbox 2: Tầm gần 40 (xuyên tường)
+        local hitboxRaycast = 87   -- Hitbox 1: Tầm xa 120 (có xét cản tường)
+        local hitboxWallbang = 35    -- Hitbox 2: Tầm gần 40 (xuyên tường)
         local player = game.Players.LocalPlayer
         local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local TweenService = game:GetService("TweenService")

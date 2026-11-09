@@ -281,7 +281,7 @@ end
 
 local function GetOpenerEntity(doorRng: Random): string
     local roll = doorRng:NextInteger(1, 100)
-    if roll <= 50 then
+    if roll <= 56 then
         return "Ripper"
     elseif roll <= 67 then
         return "Conductor"
@@ -352,7 +352,7 @@ local function CheckGrandEncounters(doorNumber: number): boolean
 end
 
 local function CheckSpecialEntities(doorNumber: number, doorRng: Random): boolean
-    local a60Base = 300
+    local a60Base = 333
     local a60Denom = entityBoosts["A-60"] and math.max(1, math.floor(a60Base / 3)) or a60Base
     if doorNumber > 12 and doorRng:NextInteger(1, a60Denom) == 1 then
         if AttemptSpawn("A-60") then
@@ -360,7 +360,7 @@ local function CheckSpecialEntities(doorNumber: number, doorRng: Random): boolea
         end
     end
     
-    local fbBase = 200
+    local fbBase = 250
     local fbDenom = entityBoosts["Frostbite"] and math.max(1, math.floor(fbBase / 3)) or fbBase
     if doorNumber > 15 and doorRng:NextInteger(1, fbDenom) == 1 then
         if AttemptSpawn("Frostbite") then

@@ -64,14 +64,14 @@ local EntityConfig = {
     StaticAssetId = "rbxassetid://81278874204337",   -- Asset Static Màn hình
     
     -- TỐC ĐỘ DI CHUYỂN & PHẠM VI (ĐÃ CẬP NHẬT)
-    NormalSpeed = 872,       -- Tốc độ không đuổi theo Node: 872
-    BaseChaseSpeed = 16.5,     -- Tốc độ khi đuổi: 17
-    HidingChaseSpeed = 3.5,  -- Tốc độ khi Player trốn tủ
-    KeycardChaseSpeed = 3.5, -- Tốc độ khi gần KeyCard/Paper
+    NormalSpeed = 100,       -- Tốc độ không đuổi theo Node: 872
+    BaseChaseSpeed = 15,     -- Tốc độ khi đuổi: 17
+    HidingChaseSpeed = 1,  -- Tốc độ khi Player trốn tủ
+    KeycardChaseSpeed = 1, -- Tốc độ khi gần KeyCard/Paper
     DetectionRange = 210,    -- Phạm vi phát hiện đuổi theo (210 Studs)
     ItemCheckRange = 200,    -- Phạm vi quét KeyCard quanh Player (200 Studs)
-    KillRange = 6.5,         -- Tầm diệt (Studs)
-    DamageAmount = 100,
+    KillRange = 5,         -- Tầm diệt (Studs)
+    DamageAmount = 79,
     
     -- CẤU HÌNH ÂM THANH BƯỚC CHÂN (RIÊNG: 50 - 120)
     SoundLink = "https://github.com/Cyrene611/Multi-Monster-/raw/refs/heads/main/Deer_god_footsteps.mp3.mpeg_1_1_1.mp3",

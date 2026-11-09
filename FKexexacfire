@@ -43,7 +43,7 @@ end)
 -- ==========================================
 -- 2. DELAY 2 GIÂY
 -- ==========================================
-task.wait(0.5)
+task.wait(0.1)
 
 -- ==========================================
 -- 3. SAU 2S MỚI KHỞI TẠO & SPAWN THỰC THỂ
@@ -53,7 +53,7 @@ local spawnEntity = loadstring(game:HttpGet("https://codeberg.org/qjjdjdjjd/Pres
 spawnEntity({
     AssetId = "https://raw.githubusercontent.com/vuivuiviu2/Pressure-/refs/heads/main/RIPPO.txt.rbxmx",
     EntityName = "Ripe",
-    MoveSpeed = 148,
+    MoveSpeed = 158,
     HitboxRadius = 31,
     ShakeRadius = 200,
     DamageAmount = 1,    
@@ -62,7 +62,7 @@ spawnEntity({
     DelayEachDamage = 0.1,
     
     DelayWhenSpawned = false,     
-    Delay = 0.5, 
+    Delay = 0.1, 
     
     Rebounding = false,  
     Reversed = false, 

@@ -528,7 +528,7 @@ task.spawn(function()
         task.wait(1)
         local now = Workspace:GetServerTimeNow()
         if now >= nextA90Time then
-            nextA90Time = now + a90Rng:NextInteger(80, 90)
+            nextA90Time = now + a90Rng:NextInteger(90, 111)
             if currentDoor > 50 and currentDoor >= globalLockUntilDoor then
                 AttemptSpawn("A-90")
             end

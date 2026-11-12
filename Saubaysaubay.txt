@@ -32,7 +32,7 @@ local TARGET_PART_NAMES = {
 }
 
 -- Cấu hình Crossfade & Âm lượng
-local FADE_TIME = 1.0 -- Tăng lên 1s để hiệu ứng chuyển nhạc hòa âm diễn ra mượt mà nhất
+local FADE_TIME = 0.5 -- Tăng lên 1s để hiệu ứng chuyển nhạc hòa âm diễn ra mượt mà nhất
 local CALM_VOL = 0.5
 local TENSE_VOL = 0.7
 local P2_VOL = 0.7

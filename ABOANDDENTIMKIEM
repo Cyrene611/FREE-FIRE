@@ -1,5 +1,5 @@
 local volumeMultiplier = 2.5
-local targetColor = Color3.fromRGB(250, 0, 0)
+local targetColor = Color3.fromRGB(240, 0, 0)
 local redSequence = ColorSequence.new(targetColor)
 
 local EntitySpawner = {}

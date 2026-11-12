@@ -508,15 +508,15 @@ local function getAvailableMimics(phaseNum)
 
             if phaseNum == 2 then
                 if url == SILENCE_URL then
-                    weight = 40
-                elseif url == BLITZ_URL or url == A120_URL then
                     weight = 30
+                elseif url == BLITZ_URL or url == A120_URL then
+                    weight = 20
                 end
             elseif phaseNum == 3 then
                 if url == SILENCE_URL then
-                    weight = 20
+                    weight = 12
                 elseif url == BLITZ_URL or url == A120_URL then
-                    weight = 15
+                    weight = 8
                 end
             end
 

@@ -35,7 +35,7 @@ local FLOOR_OFFSET = 1.32
 
 -- Danh sách thực thể mục tiêu, ID Model & Cấu hình Range riêng
 local TARGET_ENTITIES = {
-    ["Ripe"] = { EffectId = RIPE_EFFECT_ASSET_ID, SoundRange = 47, BanishRange = 45 },
+    ["Ripe"] = { EffectId = RIPE_EFFECT_ASSET_ID, SoundRange = 49, BanishRange = 47 },
     ["ReboundChild"] = { EffectId = REBOUND_EFFECT_ASSET_ID, SoundRange = 45, BanishRange = 43 },
     ["A120"] = { EffectId = A120_EFFECT_ASSET_ID, SoundRange = 33, BanishRange = 30 },
     ["A-120"] = { EffectId = A120_EFFECT_ASSET_ID, SoundRange = 33, BanishRange = 30 },
